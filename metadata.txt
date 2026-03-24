@@ -1,0 +1,46 @@
+# This file contains metadata for your plugin.
+
+# This file should be included when you package your plugin.
+
+# Mandatory items:
+
+[general]
+name=Transmittance Layer ctl
+qgisMinimumVersion=3.16
+description=Group layers and control their opacity, order, and labeling as a single blended layer.
+description[ja]=複数レイヤーをグループ化し、透過率・順番・ラベルを一括制御して一体化したレイヤーのように扱います。
+version=0.1
+author=Hideharu Masai
+email=hideharumasai@void.mints.ne.jp
+
+about=Tag any QGIS layer group as a "Transmittance Group" to open an interactive 2D control panel.
+
+    The canvas plots each layer as a draggable dot — X axis controls stacking order, Y axis controls opacity. Drag a dot to adjust both at once. Click a dot to toggle its visibility.
+
+    Key features:
+    - Real-time opacity and order editing with immediate map feedback
+    - Label control: a △ indicator selects which layer displays its QGIS label
+    - Exclusive Control mode: click any dot to show only that layer and its label; cycle through layers with arrow keys
+    - Opacity clamping: define an upper/lower opacity range applied across all layers
+    - Presets (×4): save and restore full panel states, including order, opacity, clamping, and exclusive control settings
+
+    Designed for workflows that involve comparing multiple overlapping layers — such as elevation models, orthophotos, and feature layers — where visual blending and quick layer switching matter.
+
+tracker=https://github.com/raw-slnc/transmittance_layer_ctl/issues
+repository=https://github.com/raw-slnc/transmittance_layer_ctl
+# End of mandatory metadata
+
+# Recommended items:
+
+hasProcessingProvider=no
+changelog=
+    0.1 - Initial release
+
+tags=layer,opacity,transmittance,group,blend,labeling
+
+homepage=https://github.com/raw-slnc/transmittance_layer_ctl
+category=Vector
+icon=icon.png
+experimental=False
+deprecated=False
+server=False
