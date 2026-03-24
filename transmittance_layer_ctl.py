@@ -50,11 +50,18 @@ class TransmittanceLayerCtl:
         # パネル（DockWidget）
         self.panel = TransmittancePanel(self.iface, self.iface.mainWindow())
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.panel)
+        # 初回起動のみフローティング（以降はQGISが状態を引き継ぐ）
+        from qgis.core import QgsSettings
+        key = 'transmittance_layer_ctl/initialized'
+        settings = QgsSettings()
+        if not settings.value(key, False, type=bool):
+            self.panel.setFloating(True)
+            settings.setValue(key, True)
         self.panel.hide()
 
         # メニューアクション「選択グループをTransmittanceグループにする」
         self.action_mark = QAction(
-            'Transmittanceグループに設定',
+            'Mark as Transmittance Group',
             self.iface.mainWindow()
         )
         self.action_mark.triggered.connect(self._mark_selected_group)
@@ -116,15 +123,15 @@ class TransmittanceLayerCtl:
             return
 
         if gm.is_transmittance_group(node):
-            action_open = QAction('Transmittance設定を開く', menu)
+            action_open = QAction('Open Transmittance Panel', menu)
             action_open.triggered.connect(lambda: self.panel.set_group(node))
             menu.addAction(action_open)
 
-            action_unmark = QAction('Transmittanceグループを解除', menu)
+            action_unmark = QAction('Unmark Transmittance Group', menu)
             action_unmark.triggered.connect(lambda: self._unmark_group(node))
             menu.addAction(action_unmark)
         else:
-            action_mark = QAction('Transmittanceグループに設定', menu)
+            action_mark = QAction('Mark as Transmittance Group', menu)
             action_mark.triggered.connect(lambda: self._do_mark_group(node))
             menu.addAction(action_mark)
 
@@ -139,7 +146,7 @@ class TransmittanceLayerCtl:
             QMessageBox.information(
                 self.iface.mainWindow(),
                 'Transmittance Layer ctl',
-                'レイヤーパネルでグループを選択してから実行してください。'
+                'Please select a group in the Layers panel first.'
             )
             return
         self._do_mark_group(node)
@@ -169,7 +176,7 @@ class TransmittanceLayerCtl:
         view = self.iface.layerTreeView()
         indicator = QgsLayerTreeViewIndicator(view)
         indicator.setIcon(self._indicator_icon)
-        indicator.setToolTip('Transmittance設定を開く')
+        indicator.setToolTip('Open Transmittance Panel')
         # clicked シグナルは QModelIndex を渡すため無視し、捕捉した node を使う
         indicator.clicked.connect(
             lambda _index, n=node: self.panel.set_group(n)

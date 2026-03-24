@@ -39,7 +39,7 @@ changelog=
 tags=layer,opacity,transmittance,group,blend,labeling
 
 homepage=https://github.com/raw-slnc/transmittance_layer_ctl
-category=Vector
+category=Layers
 icon=icon.png
 experimental=False
 deprecated=False

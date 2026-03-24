@@ -53,6 +53,10 @@ class TransmittancePanel(QDockWidget):
         self.current_group  = None
         self._active_preset = None  # 1〜3 or None
 
+        # ドラッグによるドッキングを無効化（格納はダブルクリックのみ）
+        self.setFeatures(
+            QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable
+        )
         self._build_ui()
 
     # ------------------------------------------------------------------ #
@@ -162,6 +166,12 @@ class TransmittancePanel(QDockWidget):
         btn_layout.addWidget(self._filter_btn)
 
         layout.addWidget(group_box)
+
+        # デベロッパー表示
+        lbl_credit = QLabel('Developed by Avid Tree Work')
+        lbl_credit.setStyleSheet('color: #AAAACC; font-size: 10px; background: transparent;')
+        lbl_credit.setAlignment(Qt.AlignCenter)
+        layout.addWidget(lbl_credit)
 
         # シグナル接続
         self.canvas.opacity_changed.connect(self._on_opacity)
