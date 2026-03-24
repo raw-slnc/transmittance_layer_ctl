@@ -9,7 +9,7 @@ name=Transmittance Layer ctl
 qgisMinimumVersion=3.16
 description=Group layers and control their opacity, order, and labeling as a single blended layer.
 description[ja]=複数レイヤーをグループ化し、透過率・順番・ラベルを一括制御して一体化したレイヤーのように扱います。
-version=0.1
+version=0.1.0
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
