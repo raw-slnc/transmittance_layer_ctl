@@ -200,6 +200,15 @@ class TransmittancePanel(QDockWidget):
         self._reload()
         self.show()
         self.raise_()
+        # EXctlがオンの場合、選択中のポイントにフォーカスを当てる
+        if self.canvas._exclusive_mode:
+            sel = self.canvas._sel
+            if sel and sel in self.canvas._data:
+                self.canvas._apply_exclusive(sel)
+            elif self.canvas._layer_ids:
+                self.canvas._apply_exclusive(self.canvas._layer_ids[0])
+            self.canvas.setFocus()
+            self.canvas.update()
 
     def refresh(self):
         if self.current_group:
@@ -283,6 +292,13 @@ class TransmittancePanel(QDockWidget):
 
     def _on_exclusive_toggle(self):
         self.canvas._exclusive_mode = not self.canvas._exclusive_mode
+        if self.canvas._exclusive_mode:
+            sel = self.canvas._sel
+            if sel and sel in self.canvas._data:
+                self.canvas._apply_exclusive(sel)
+            elif self.canvas._layer_ids:
+                self.canvas._apply_exclusive(self.canvas._layer_ids[0])
+            self.canvas.setFocus()
         self.canvas.update()
         self._update_exclusive_btn_style()
 
