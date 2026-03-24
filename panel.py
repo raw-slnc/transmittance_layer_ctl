@@ -3,7 +3,7 @@
 import json
 from qgis.PyQt.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QMessageBox, QGroupBox,
+    QLabel, QPushButton, QMessageBox, QGroupBox, QApplication,
 )
 from qgis.PyQt.QtCore import Qt, QTimer
 from qgis.core import QgsProject
@@ -58,6 +58,7 @@ class TransmittancePanel(QDockWidget):
         self.iface          = iface
         self.current_group  = None
         self._active_preset = None  # 1〜3 or None
+        self._positioned    = False  # 初回表示位置調整フラグ
 
         # ドラッグによるドッキングを無効化（格納はダブルクリックのみ）
         self.setFeatures(
@@ -194,12 +195,37 @@ class TransmittancePanel(QDockWidget):
     #  Public API
     # ------------------------------------------------------------------ #
 
+    def _move_to_top_right(self):
+        if not self.isFloating():
+            return
+        main_win = self.iface.mainWindow()
+        main_center = main_win.geometry().center()
+        screen = next(
+            (s for s in QApplication.screens() if s.geometry().contains(main_center)),
+            QApplication.primaryScreen()
+        )
+        scr = screen.availableGeometry()
+        x = scr.right()  - self.width()  - 20
+        y = scr.bottom() - self.height() - 20
+        self.move(x, y)
+
+    def closeEvent(self, event):
+        """パネルを閉じたときにレイヤーパネルのグループを折りたたむ"""
+        if self.current_group:
+            self.current_group.setExpanded(False)
+        super().closeEvent(event)
+
     def set_group(self, group_node):
         self.current_group = group_node
         self.group_label.setText(group_node.name())
         self._reload()
         self.show()
         self.raise_()
+        self.activateWindow()
+        self.canvas.setFocus()
+        if not self._positioned:
+            self._positioned = True
+            QTimer.singleShot(0, self._move_to_top_right)
         # EXctlがオンの場合、選択中のポイントにフォーカスを当てる
         if self.canvas._exclusive_mode:
             sel = self.canvas._sel
