@@ -205,7 +205,7 @@ class TransmittancePanel(QDockWidget):
             QApplication.primaryScreen()
         )
         scr = screen.availableGeometry()
-        x = scr.right()  - self.width()  - 20
+        x = scr.right()  - self.width()  - 40
         y = scr.bottom() - self.height() - 20
         self.move(x, y)
 
