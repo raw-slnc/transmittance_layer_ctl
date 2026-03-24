@@ -134,16 +134,15 @@ Presets are saved inside the QGIS project file (`.qgs` / `.qgz`) and are restore
 
 ---
 
-## Support / サポート
+## Support
 
 If this plugin is helpful for your work, you can support the development here:
-開発を応援していただけると嬉しいです。
 https://paypal.me/rawslnc
 
-## License / ライセンス
+## License
 
 GNU General Public License v2.0 — see [LICENSE](LICENSE).
 
-## Author / 作者
+## Author
 
 Copyright (C) 2026 Hideharu Masai
