@@ -50,13 +50,7 @@ class TransmittanceLayerCtl:
         # パネル（DockWidget）
         self.panel = TransmittancePanel(self.iface, self.iface.mainWindow())
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.panel)
-        # 初回起動のみフローティング（以降はQGISが状態を引き継ぐ）
-        from qgis.core import QgsSettings
-        key = 'transmittance_layer_ctl/initialized'
-        settings = QgsSettings()
-        if not settings.value(key, False, type=bool):
-            self.panel.setFloating(True)
-            settings.setValue(key, True)
+        self.panel.setFloating(True)
         self.panel.hide()
 
         # メニューアクション「選択グループをTransmittanceグループにする」

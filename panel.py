@@ -44,6 +44,12 @@ class PresetButton(QPushButton):
             self._timer.stop()
         super().mouseReleaseEvent(event)
 
+    def enterEvent(self, event):
+        from qgis.PyQt.QtWidgets import QToolTip
+        if self.toolTip():
+            QToolTip.showText(self.mapToGlobal(self.rect().bottomLeft()), self.toolTip(), self)
+        super().enterEvent(event)
+
 
 class TransmittancePanel(QDockWidget):
 
@@ -406,6 +412,11 @@ class TransmittancePanel(QDockWidget):
                 btn.setStyleSheet('color: #AAAACC;')
             else:
                 btn.setStyleSheet('color: #AAAACC;')
+            if has_data:
+                tip = 'Click: apply  |  Long-press: overwrite  |  Right-click: delete'
+            else:
+                tip = 'Empty — long-press to save current state'
+            btn.setToolTip(tip)
 
     def _on_preset_click(self, btn, n):
         if btn._long_fired:
