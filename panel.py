@@ -207,7 +207,7 @@ class TransmittancePanel(QDockWidget):
         )
         scr = screen.availableGeometry()
         x = scr.right()  - self.width()  - 40
-        y = scr.bottom() - self.height() - 20
+        y = scr.bottom() - self.height() - 40
         self.move(x, y)
 
     def closeEvent(self, event):

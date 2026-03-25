@@ -9,10 +9,11 @@ from qgis.PyQt.QtCore import Qt, QPointF, QRectF, pyqtSignal, QTimer
 from qgis.core import QgsProject
 
 SNAP        = 5
-PT_RADIUS   = 7
+PT_RADIUS   = 5
 MARGIN_L    = 56
 MARGIN_B    = 38
 MARGIN_T    = 16
+PLOT_T      = MARGIN_T * 1.2   # グラフ上端（ラベル表示領域の分を追加）
 MARGIN_R    = 46
 SYM_SIZE    = 6
 SYM_HIT     = 10
@@ -121,16 +122,16 @@ class CanvasWidget(QWidget):
         return self.width()  - MARGIN_L - MARGIN_R
 
     def _dh(self):
-        return self.height() - MARGIN_T - MARGIN_B
+        return self.height() - PLOT_T - MARGIN_B
 
     def _to_screen(self, slot, opacity):
         sx = MARGIN_L + slot / (self._n_slots * SNAP) * self._dw()
-        sy = MARGIN_T + (100 - opacity) / 100 * self._dh()
+        sy = PLOT_T + (100 - opacity) / 100 * self._dh()
         return QPointF(sx, sy)
 
     def _to_data(self, sx, sy):
         x_raw = (sx - MARGIN_L) / self._dw() * (self._n_slots * SNAP)
-        y_raw = 100 - (sy - MARGIN_T) / self._dh() * 100
+        y_raw = 100 - (sy - PLOT_T) / self._dh() * 100
         slot  = max(0, min(self._n_slots * SNAP, round(x_raw / SNAP) * SNAP))
         op    = max(0, min(100, round(y_raw / SNAP) * SNAP))
         return slot, op
@@ -140,7 +141,7 @@ class CanvasWidget(QWidget):
         return max(0, min(self._n_slots * SNAP, round(x_raw / SNAP) * SNAP))
 
     def _screen_to_clamp_pos(self, sy):
-        y_raw = 100 - (sy - MARGIN_T) / self._dh() * 100
+        y_raw = 100 - (sy - PLOT_T) / self._dh() * 100
         return max(0, min(100, round(y_raw / SNAP) * SNAP))
 
     # ------------------------------------------------------------------ #
@@ -154,6 +155,7 @@ class CanvasWidget(QWidget):
         self._draw_grid(p)
         self._draw_axes(p)
         self._draw_axis_numbers(p)
+        self._draw_axis_label(p)
         for lid in self._layer_ids:
             if lid in self._data:
                 self._draw_mountain(p, lid)
@@ -170,7 +172,7 @@ class CanvasWidget(QWidget):
         if d['opacity'] == 60:
             return
         apex       = self._to_screen(d['slot'], d['opacity'])
-        base_y_val = MARGIN_T + (100 - 60) / 100 * self._dh()
+        base_y_val = PLOT_T + (100 - 60) / 100 * self._dh()
         base_left  = QPointF(MARGIN_L,              base_y_val)
         base_right = QPointF(MARGIN_L + self._dw(), base_y_val)
         # 左辺: 底辺で垂直立ち上がり → 頂点で水平
@@ -213,18 +215,18 @@ class CanvasWidget(QWidget):
         dw, dh = self._dw(), self._dh()
         for s in range(SNAP, (self._n_slots + 1) * SNAP, SNAP):
             sx = MARGIN_L + s / (self._n_slots * SNAP) * dw
-            p.drawLine(QPointF(sx, MARGIN_T), QPointF(sx, MARGIN_T + dh))
+            p.drawLine(QPointF(sx, PLOT_T), QPointF(sx, PLOT_T + dh))
         for op in range(SNAP, 105, SNAP):
-            sy = MARGIN_T + (100 - op) / 100 * dh
+            sy = PLOT_T + (100 - op) / 100 * dh
             p.drawLine(QPointF(MARGIN_L, sy), QPointF(MARGIN_L + dw, sy))
 
     def _draw_axes(self, p):
         p.setPen(QPen(QColor('#6666AA'), 1))
         dw, dh = self._dw(), self._dh()
-        p.drawLine(QPointF(MARGIN_L, MARGIN_T),
-                   QPointF(MARGIN_L, MARGIN_T + dh))
-        p.drawLine(QPointF(MARGIN_L,      MARGIN_T + dh),
-                   QPointF(MARGIN_L + dw, MARGIN_T + dh))
+        p.drawLine(QPointF(MARGIN_L, PLOT_T),
+                   QPointF(MARGIN_L, PLOT_T + dh))
+        p.drawLine(QPointF(MARGIN_L,      PLOT_T + dh),
+                   QPointF(MARGIN_L + dw, PLOT_T + dh))
 
     def _draw_axis_numbers(self, p):
         font = QFont()
@@ -234,12 +236,20 @@ class CanvasWidget(QWidget):
         dw, dh = self._dw(), self._dh()
         for s in range(10, 101, 10):
             sx = MARGIN_L + s / (self._n_slots * SNAP) * dw
-            p.drawText(QRectF(sx - 12, MARGIN_T + dh + 18, 24, 14),
+            p.drawText(QRectF(sx - 12, PLOT_T + dh + 18, 24, 14),
                        Qt.AlignCenter, str(s))
         for op in range(10, 101, 10):
-            sy = MARGIN_T + (100 - op) / 100 * dh
+            sy = PLOT_T + (100 - op) / 100 * dh
             p.drawText(QRectF(0, sy - 7, 30, 14),
                        Qt.AlignRight | Qt.AlignVCenter, str(op))
+
+    def _draw_axis_label(self, p):
+        font = QFont()
+        font.setPointSize(7)
+        p.setFont(font)
+        p.setPen(QColor("#9C9CB3"))
+        p.drawText(QRectF(MARGIN_L, 0, self._dw(), PLOT_T),
+                   Qt.AlignLeft | Qt.AlignTop, 'Y: opacity (= 1 \u2212 transmittance)')
 
     def _draw_layer(self, p, lid, name):
         d        = self._data[lid]
@@ -247,11 +257,11 @@ class CanvasWidget(QWidget):
         col      = d['color']
         dh       = self._dh()
         dw       = self._dw()
-        x_axis_y = MARGIN_T + dh
+        x_axis_y = PLOT_T + dh
 
         if lid == self._sel:
             p.setPen(QPen(col.lighter(120), 1, Qt.DashLine))
-            p.drawLine(QPointF(pt.x(), MARGIN_T), QPointF(pt.x(), x_axis_y))
+            p.drawLine(QPointF(pt.x(), PLOT_T), QPointF(pt.x(), x_axis_y))
             p.drawLine(QPointF(MARGIN_L, pt.y()), QPointF(MARGIN_L + dw, pt.y()))
 
         r       = PT_RADIUS + (2 if lid == self._sel else 0)
@@ -287,24 +297,24 @@ class CanvasWidget(QWidget):
             sx  = MARGIN_L + self._label_pos / (self._n_slots * SNAP) * dw
             lid = self._label_layer()
             col = self._data[lid]['color'] if lid else QColor('#888899')
-            self._draw_triangle(p, QPointF(sx, MARGIN_T + dh), col, self._sel_type == 'tri')
+            self._draw_triangle(p, QPointF(sx, PLOT_T + dh), col, self._sel_type == 'tri')
 
         # クランプ帯域（有効時）
         if self._clamp_enabled:
-            sy_max = MARGIN_T + (100 - self._clamp_max) / 100 * dh
-            sy_min = MARGIN_T + (100 - self._clamp_min) / 100 * dh
+            sy_max = PLOT_T + (100 - self._clamp_max) / 100 * dh
+            sy_min = PLOT_T + (100 - self._clamp_min) / 100 * dh
             p.setPen(Qt.NoPen)
             p.setBrush(QBrush(QColor(80, 160, 255, 25)))
             p.drawRect(QRectF(MARGIN_L, sy_max, dw, sy_min - sy_max))
 
         # ◁ clamp_max（右Y軸・上限）
-        sy_max  = MARGIN_T + (100 - self._clamp_max) / 100 * dh
+        sy_max  = PLOT_T + (100 - self._clamp_max) / 100 * dh
         col_max = QColor('#4488FF') if self._clamp_enabled else QColor('#555577')
         self._draw_left_arrow(p, QPointF(MARGIN_L + dw, sy_max), col_max,
                               self._sel_type == 'clamp_max')
 
         # ◁ clamp_min（右Y軸・下限）
-        sy_min  = MARGIN_T + (100 - self._clamp_min) / 100 * dh
+        sy_min  = PLOT_T + (100 - self._clamp_min) / 100 * dh
         col_min = QColor('#44AAFF') if self._clamp_enabled else QColor('#555577')
         self._draw_left_arrow(p, QPointF(MARGIN_L + dw, sy_min), col_min,
                               self._sel_type == 'clamp_min')
@@ -341,7 +351,7 @@ class CanvasWidget(QWidget):
         tw = fm.horizontalAdvance(text) + 10
         th = fm.height() + 6
         rx = max(MARGIN_L, min(self.width() - MARGIN_R - tw, pt.x() - tw / 2))
-        ry = max(MARGIN_T, pt.y() - PT_RADIUS - th - 4)
+        ry = max(PLOT_T, pt.y() - PT_RADIUS - th - 4)
         p.setPen(Qt.NoPen)
         p.setBrush(QBrush(QColor(0, 0, 0, 200)))
         p.drawRoundedRect(QRectF(rx, ry, tw, th), 3, 3)
@@ -365,19 +375,19 @@ class CanvasWidget(QWidget):
         if not self._indicators_visible:
             return False
         # 先端が y_axis + 4、底辺中心が y_axis + 4 + SYM_SIZE*0.8
-        y_axis = MARGIN_T + self._dh()
+        y_axis = PLOT_T + self._dh()
         sx     = MARGIN_L + self._label_pos / (self._n_slots * SNAP) * self._dw()
         return abs(pos.x() - sx) <= SYM_HIT and abs(pos.y() - (y_axis + 4 + SYM_SIZE)) <= SYM_HIT
 
     def _hit_clamp_max(self, pos):
         # 先端が sx+6、底辺が sx+6+SYM_SIZE*1.6、中心 sx+6+SYM_SIZE*0.8
         sx = MARGIN_L + self._dw()
-        sy = MARGIN_T + (100 - self._clamp_max) / 100 * self._dh()
+        sy = PLOT_T + (100 - self._clamp_max) / 100 * self._dh()
         return abs(pos.x() - (sx + 6 + SYM_SIZE)) <= SYM_HIT and abs(pos.y() - sy) <= SYM_HIT
 
     def _hit_clamp_min(self, pos):
         sx = MARGIN_L + self._dw()
-        sy = MARGIN_T + (100 - self._clamp_min) / 100 * self._dh()
+        sy = PLOT_T + (100 - self._clamp_min) / 100 * self._dh()
         return abs(pos.x() - (sx + 6 + SYM_SIZE)) <= SYM_HIT and abs(pos.y() - sy) <= SYM_HIT
 
     # ------------------------------------------------------------------ #
