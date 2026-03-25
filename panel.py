@@ -187,6 +187,7 @@ class TransmittancePanel(QDockWidget):
         self.canvas.visibility_toggled.connect(self._on_visibility)
         self.canvas.layer_selected.connect(self._on_layer_selected)
         self.canvas.clamp_changed.connect(self._on_clamp_changed)
+        self.canvas.indicators_toggled.connect(self._update_label_btn_style)
 
         self._update_preset_btn_style()
         self._update_label_btn_style()
@@ -226,15 +227,21 @@ class TransmittancePanel(QDockWidget):
         if not self._positioned:
             self._positioned = True
             QTimer.singleShot(0, self._move_to_top_right)
-        # EXctlがオンの場合、選択中のポイントにフォーカスを当てる
+        ids = self.canvas._layer_ids
         if self.canvas._exclusive_mode:
+            # EXctlがオンの場合、選択中または最初のポイントに排他適用
             sel = self.canvas._sel
-            if sel and sel in self.canvas._data:
-                self.canvas._apply_exclusive(sel)
-            elif self.canvas._layer_ids:
-                self.canvas._apply_exclusive(self.canvas._layer_ids[0])
-            self.canvas.setFocus()
-            self.canvas.update()
+            target = sel if (sel and sel in self.canvas._data) else (ids[0] if ids else None)
+            if target:
+                self.canvas._apply_exclusive(target)
+        else:
+            # 通常モード: 選択がなければ最初のポイントを選択
+            if (not self.canvas._sel or self.canvas._sel not in self.canvas._data) and ids:
+                self.canvas._sel      = ids[0]
+                self.canvas._sel_type = 'point'
+                self.canvas.layer_selected.emit(ids[0])
+        self.canvas.setFocus()
+        self.canvas.update()
 
     def refresh(self):
         if self.current_group:

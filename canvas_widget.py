@@ -28,12 +28,13 @@ LAYER_COLORS = [
 class CanvasWidget(QWidget):
     """2Dキャンバス: X=レイヤー順序, Y=不透明度"""
 
-    opacity_changed    = pyqtSignal(str, int)
-    order_changed      = pyqtSignal(list)
-    label_toggled      = pyqtSignal(str, bool)
-    layer_selected     = pyqtSignal(str)
-    visibility_toggled = pyqtSignal(str, bool)
-    clamp_changed      = pyqtSignal(bool, int, int)  # (enabled, min, max)
+    opacity_changed      = pyqtSignal(str, int)
+    order_changed        = pyqtSignal(list)
+    label_toggled        = pyqtSignal(str, bool)
+    layer_selected       = pyqtSignal(str)
+    visibility_toggled   = pyqtSignal(str, bool)
+    clamp_changed        = pyqtSignal(bool, int, int)  # (enabled, min, max)
+    indicators_toggled   = pyqtSignal(bool)            # _indicators_visible 変更通知
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -543,8 +544,66 @@ class CanvasWidget(QWidget):
     #  キーボード操作
     # ------------------------------------------------------------------ #
 
+    def _toggle_focused(self):
+        """スペースキー: 選択中の要素の表示をトグル"""
+        if self._sel_type == 'point' and self._sel in self._data:
+            if self._exclusive_mode:
+                self._apply_exclusive(self._sel)
+            else:
+                d = self._data[self._sel]
+                d['visible'] = not d['visible']
+                self.visibility_toggled.emit(self._sel, d['visible'])
+            self.update()
+        elif self._sel_type == 'tri':
+            self._indicators_visible = not self._indicators_visible
+            owner = self._label_owner
+            if owner:
+                self.label_toggled.emit(owner, self._indicators_visible)
+            self.indicators_toggled.emit(self._indicators_visible)
+            self.update()
+        elif self._sel_type in ('clamp_max', 'clamp_min'):
+            self._clamp_enabled = not self._clamp_enabled
+            self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
+            self.update()
+
+    def _cycle_focus(self, forward=True):
+        """TAB / Shift+TAB でフォーカス対象を巡回する"""
+        targets = [('point', lid) for lid in self._layer_ids if lid in self._data]
+        targets += [('tri', None), ('clamp_max', None), ('clamp_min', None)]
+        if not targets:
+            return
+        current = next(
+            (i for i, (t, s) in enumerate(targets)
+             if t == self._sel_type and (t != 'point' or s == self._sel)),
+            None
+        )
+        new_idx = ((current if current is not None else -1) + (1 if forward else -1)) % len(targets)
+        new_type, new_sel = targets[new_idx]
+        self._sel_type = new_type
+        if new_type == 'point':
+            self._sel = new_sel
+            self.layer_selected.emit(new_sel)
+        self.update()
+
+    def focusNextPrevChild(self, next):
+        """TABをkeyPressEventに届けるためQtデフォルトの巡回を無効化"""
+        return False
+
     def keyPressEvent(self, event):
         key = event.key()
+
+        if key == Qt.Key_Tab:
+            self._cycle_focus(forward=True)
+            event.accept()
+            return
+        if key == Qt.Key_Backtab:
+            self._cycle_focus(forward=False)
+            event.accept()
+            return
+        if key == Qt.Key_Space:
+            self._toggle_focused()
+            event.accept()
+            return
 
         if self._sel_type == 'point':
             if self._sel is None or self._sel not in self._data:

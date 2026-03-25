@@ -66,6 +66,8 @@ The 2D canvas plots each layer as a colored dot.
 |-----|--------|
 | Up / Down | Opacity +/- 5% |
 | Left / Right | Move stacking order left/right |
+| Space | Toggle layer visibility on/off |
+| Tab / Shift+Tab | Cycle focus: layer points → △ → ◁ max → ◁ min |
 
 ---
 
@@ -73,7 +75,8 @@ The 2D canvas plots each layer as a colored dot.
 
 The **△** symbol below the X axis marks which layer's QGIS label is currently displayed. Drag it left or right to change the target layer.
 
-- Arrow keys move △ when it is selected (click to select).
+- Arrow keys move △ when it is selected (click or Tab to select).
+- **Space** toggles the target layer's QGIS label on/off when △ is selected.
 - The **label** button shows or hides △ and toggles the target layer's QGIS label on/off.
 
 ---
@@ -84,6 +87,7 @@ Two **◁** markers on the right Y axis define an opacity clamp range.
 
 - Drag the upper ◁ to set the **maximum opacity**.
 - Drag the lower ◁ to set the **minimum opacity**.
+- **Space** toggles clamping on/off when a ◁ marker is selected.
 - Enable clamping with the **filter** button — all layers' opacity values are clamped to the range without changing their relative positions.
 
 ---
