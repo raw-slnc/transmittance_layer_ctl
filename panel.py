@@ -353,9 +353,12 @@ class TransmittancePanel(QDockWidget):
             diag = max(0, min(100, round(t * 100 / SNAP) * SNAP))
             self.canvas._data[lid]['slot']    = diag
             self.canvas._data[lid]['opacity'] = 60
+            self.canvas._data[lid]['visible'] = True
             layer = QgsProject.instance().mapLayer(lid)
             if layer:
                 gm.set_layer_opacity(layer, 60)
+            if self.current_group:
+                gm.set_layer_visibility(self.current_group, lid, True)
         self.canvas.update()
 
     def _on_filter_toggle(self):

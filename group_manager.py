@@ -87,8 +87,8 @@ def apply_rendering_order(group, ordered_layer_ids):
     had_custom_order = root.hasCustomLayerOrder()
 
     # QGISレイヤツリーではインデックス0が最前面（Top）になる。
-    # ordered_layer_ids は [背面 -> 前面] の順なので逆順にしてツリー上部から配置する。
-    target_order = list(reversed(ordered_layer_ids))
+    # ordered_layer_ids は [前面(Order 1) -> 背面] の順なのでそのままツリー上部から配置する。
+    target_order = list(ordered_layer_ids)
 
     for i, lid in enumerate(target_order):
         node = group.findLayer(lid)
