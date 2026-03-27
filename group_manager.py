@@ -74,43 +74,34 @@ def set_label_enabled(layer, enabled):
 
 
 def apply_rendering_order(group, ordered_layer_ids):
-    """ノードを削除せずレンダリング順序を変更し、順序をグループに保存する。
+    """グループ内のノード順序を入れ替えて描画順を制御し、順序をグループに保存する。
 
-    removeChildNode はレイヤーをプロジェクトから削除してしまうため使用しない。
-    代わりに QgsLayerTreeRoot.setCustomLayerOrder() でレンダリング順を制御する。
+    setCustomLayerOrder() / setHasCustomLayerOrder(True) を使わないことで
+    「Control rendering order」チェックボックスの状態を変化させない。
+    ノードはクローンして挿入後に元を削除するため、レイヤーはプロジェクトに残る。
     """
     # 順序をグループのカスタムプロパティに保存（プロジェクト保存時に永続化）
     group.setCustomProperty(PROP_ORDER, json.dumps(ordered_layer_ids))
 
     root = QgsProject.instance().layerTreeRoot()
-    group_lids = set(ordered_layer_ids)
+    had_custom_order = root.hasCustomLayerOrder()
 
-    ordered_layers = [QgsProject.instance().mapLayer(lid)
-                      for lid in ordered_layer_ids
-                      if QgsProject.instance().mapLayer(lid)]
+    # QGISレイヤツリーではインデックス0が最前面（Top）になる。
+    # ordered_layer_ids は [背面 -> 前面] の順なので逆順にしてツリー上部から配置する。
+    target_order = list(reversed(ordered_layer_ids))
 
-    # 現在のカスタム順序、またはデフォルト順序を取得
-    current = (list(root.customLayerOrder())
-               if root.hasCustomLayerOrder()
-               else list(root.layerOrder()))
-
-    # グループレイヤーの最初の出現位置にまとめて配置
-    result = []
-    inserted = False
-    for l in current:
-        if l is None:
+    for i, lid in enumerate(target_order):
+        node = group.findLayer(lid)
+        if not node or node.parent() != group:
             continue
-        if l.id() in group_lids:
-            if not inserted:
-                result.extend(ordered_layers)
-                inserted = True
-        else:
-            result.append(l)
-    if not inserted:
-        result.extend(ordered_layers)
+        if group.children().index(node) != i:
+            cloned = node.clone()
+            group.insertChildNode(i, cloned)
+            group.removeChildNode(node)
 
-    root.setHasCustomLayerOrder(True)
-    root.setCustomLayerOrder(result)
+    # ノード移動で「Control rendering order」が意図せずONになるのを防ぐ
+    if root.hasCustomLayerOrder() != had_custom_order:
+        root.setHasCustomLayerOrder(had_custom_order)
 
 
 def get_layers_in_order(group):
