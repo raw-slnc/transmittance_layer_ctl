@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import sip
 from qgis.PyQt.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QMessageBox, QGroupBox, QApplication,
@@ -212,8 +213,9 @@ class TransmittancePanel(QDockWidget):
 
     def closeEvent(self, event):
         """パネルを閉じたときにレイヤーパネルのグループを折りたたむ"""
-        if self.current_group:
-            self.current_group.setExpanded(False)
+        group = self._valid_group()
+        if group:
+            group.setExpanded(False)
         super().closeEvent(event)
 
     def set_group(self, group_node):
@@ -243,8 +245,21 @@ class TransmittancePanel(QDockWidget):
         self.canvas.setFocus()
         self.canvas.update()
 
+    def _valid_group(self):
+        """current_group の C++ オブジェクトが有効な場合のみ返す。削除済みなら None にリセット。"""
+        if self.current_group is None:
+            return None
+        try:
+            if sip.isdeleted(self.current_group):
+                self.current_group = None
+                return None
+        except Exception:
+            self.current_group = None
+            return None
+        return self.current_group
+
     def refresh(self):
-        if self.current_group:
+        if self._valid_group():
             self._reload()
 
     # ------------------------------------------------------------------ #
@@ -283,8 +298,9 @@ class TransmittancePanel(QDockWidget):
             gm.set_layer_opacity(layer, op)
 
     def _on_order(self, ordered_ids):
-        if self.current_group:
-            gm.apply_rendering_order(self.current_group, ordered_ids)
+        group = self._valid_group()
+        if group:
+            gm.apply_rendering_order(group, ordered_ids)
             self.canvas._layer_ids = list(ordered_ids)
             self.canvas.update()
 
@@ -294,8 +310,9 @@ class TransmittancePanel(QDockWidget):
             gm.set_label_enabled(layer, enabled)
 
     def _on_visibility(self, layer_id, visible):
-        if self.current_group:
-            gm.set_layer_visibility(self.current_group, layer_id, visible)
+        group = self._valid_group()
+        if group:
+            gm.set_layer_visibility(group, layer_id, visible)
 
     def _on_layer_selected(self, layer_id):
         layer = QgsProject.instance().mapLayer(layer_id)
@@ -357,8 +374,9 @@ class TransmittancePanel(QDockWidget):
             layer = QgsProject.instance().mapLayer(lid)
             if layer:
                 gm.set_layer_opacity(layer, 60)
-            if self.current_group:
-                gm.set_layer_visibility(self.current_group, lid, True)
+            group = self._valid_group()
+            if group:
+                gm.set_layer_visibility(group, lid, True)
         self.canvas.update()
 
     def _on_filter_toggle(self):
@@ -426,7 +444,9 @@ class TransmittancePanel(QDockWidget):
                 valid_order.append(lid)
         if valid_order:
             self.canvas._layer_ids = valid_order
-            gm.apply_rendering_order(self.current_group, valid_order)
+            group = self._valid_group()
+            if group:
+                gm.apply_rendering_order(group, valid_order)
 
         # 各レイヤーの状態
         for lid, ld in data.get('layers', {}).items():
@@ -435,9 +455,10 @@ class TransmittancePanel(QDockWidget):
             self.canvas._data[lid]['opacity'] = ld.get('opacity', 100)
             self.canvas._data[lid]['slot']    = ld.get('slot', 0)
             self.canvas._data[lid]['visible'] = ld.get('visible', True)
-            if self.current_group:
+            group = self._valid_group()
+            if group:
                 gm.set_layer_visibility(
-                    self.current_group, lid, ld.get('visible', True)
+                    group, lid, ld.get('visible', True)
                 )
 
         # クランプ
