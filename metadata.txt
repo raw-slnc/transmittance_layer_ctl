@@ -9,7 +9,7 @@ name=Transmittance Layer ctl
 qgisMinimumVersion=3.16
 description=Group layers and control their opacity, order, and labeling as a single blended layer.
 description[ja]=複数レイヤーをグループ化し、透過率・順番・ラベルを一括制御して一体化したレイヤーのように扱います。
-version=0.1.4
+version=0.1.5
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
@@ -34,6 +34,7 @@ repository=https://github.com/raw-slnc/transmittance_layer_ctl
 
 hasProcessingProvider=no
 changelog=
+    0.1.5 - Fix: layer order changes via mouse drag and keyboard now correctly apply to QGIS layer tree; opacity is now applied immediately when the panel is opened; initial slot distribution adjusted to allow all layers to be reordered
     0.1.4 - Fix: prevent RuntimeError crash when operating after a transmittance group has been deleted from the layer tree
     0.1.3 - Fix: corrected critical misconfiguration where Order 1 (leftmost) was rendered at the bottom instead of the top; Reset button now sets all layers to visible
     0.1.2 - Fix: reordering layers no longer enables "Control rendering order" in QGIS Layer Order panel

@@ -90,8 +90,9 @@ class CanvasWidget(QWidget):
         n = len(layers)
         for i, layer in enumerate(layers):
             lid = layer.id()
-            t    = i / (n - 1) if n > 1 else 0.5
-            diag = max(0, min(100, round(t * 100 / SNAP) * SNAP))
+            t     = i / (n - 1) if n > 1 else 0.5
+            inner = self._n_slots * SNAP - 2 * SNAP   # 両端に1SNAP余白
+            diag  = SNAP + max(0, min(inner, round(t * inner / SNAP) * SNAP))
             old  = self._data.get(lid, {})
             self._data[lid] = {
                 'slot'   : old.get('slot',    diag),
@@ -514,6 +515,8 @@ class CanvasWidget(QWidget):
                     d['visible'] = not d['visible']
                     self.visibility_toggled.emit(was_lid, d['visible'])
                 self.update()
+            elif self._did_drag:
+                self._commit_order()
 
     # ------------------------------------------------------------------ #
     #  順序コミット

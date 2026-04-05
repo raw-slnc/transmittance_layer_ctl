@@ -273,6 +273,7 @@ class TransmittancePanel(QDockWidget):
             vis = gm.get_layer_visibility(self.current_group, layer.id())
             if layer.id() in self.canvas._data:
                 self.canvas._data[layer.id()]['visible'] = vis
+        self._apply_all_opacities()
         self.canvas.update()
 
     def _apply_all_opacities(self):
@@ -366,8 +367,9 @@ class TransmittancePanel(QDockWidget):
         for i, lid in enumerate(ids):
             if lid not in self.canvas._data:
                 continue
-            t    = i / (n - 1) if n > 1 else 0.5
-            diag = max(0, min(100, round(t * 100 / SNAP) * SNAP))
+            t     = i / (n - 1) if n > 1 else 0.5
+            inner = self.canvas._n_slots * SNAP - 2 * SNAP
+            diag  = SNAP + max(0, min(inner, round(t * inner / SNAP) * SNAP))
             self.canvas._data[lid]['slot']    = diag
             self.canvas._data[lid]['opacity'] = 60
             self.canvas._data[lid]['visible'] = True
