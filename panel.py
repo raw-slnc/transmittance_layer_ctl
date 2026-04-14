@@ -224,6 +224,7 @@ class TransmittancePanel(QDockWidget):
         self._active_preset = None
         self.group_label.setText(group_node.name())
         self._reload()
+        self._update_preset_btn_style()
         self.show()
         self.raise_()
         self.activateWindow()
