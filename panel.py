@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import re
 import sip
 from qgis.PyQt.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
@@ -220,6 +221,7 @@ class TransmittancePanel(QDockWidget):
 
     def set_group(self, group_node):
         self.current_group = group_node
+        self._active_preset = None
         self.group_label.setText(group_node.name())
         self._reload()
         self.show()
@@ -397,11 +399,24 @@ class TransmittancePanel(QDockWidget):
     #  プリセット
     # ------------------------------------------------------------------ #
 
+    def _group_key(self):
+        """現在のグループ名をプロジェクトエントリキー用に正規化して返す。グループ未選択時は None。"""
+        group = self._valid_group()
+        if group is None:
+            return None
+        return re.sub(r'[^A-Za-z0-9]', '_', group.name())
+
     def _preset_key(self, n):
-        return f'preset_{n}'
+        gk = self._group_key()
+        if gk is None:
+            return None
+        return f'preset_{gk}_{n}'
 
     def _load_preset_data(self, n):
-        val, ok = QgsProject.instance().readEntry(_PRESET_SECTION, self._preset_key(n))
+        key = self._preset_key(n)
+        if key is None:
+            return None
+        val, ok = QgsProject.instance().readEntry(_PRESET_SECTION, key)
         if not ok or not val:
             return None
         try:
@@ -410,12 +425,18 @@ class TransmittancePanel(QDockWidget):
             return None
 
     def _save_preset_data(self, n, data):
+        key = self._preset_key(n)
+        if key is None:
+            return
         QgsProject.instance().writeEntry(
-            _PRESET_SECTION, self._preset_key(n), json.dumps(data)
+            _PRESET_SECTION, key, json.dumps(data)
         )
 
     def _delete_preset_data(self, n):
-        QgsProject.instance().removeEntry(_PRESET_SECTION, self._preset_key(n))
+        key = self._preset_key(n)
+        if key is None:
+            return
+        QgsProject.instance().removeEntry(_PRESET_SECTION, key)
 
     def _current_state(self):
         layers = {}
