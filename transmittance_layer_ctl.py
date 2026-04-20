@@ -78,23 +78,23 @@ class TransmittanceLayerCtl:
     def unload(self):
         try:
             self.iface.removePluginVectorMenu('Transmittance Layer ctl', self.action_mark)
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self.iface.layerTreeView().contextMenuAboutToShow.disconnect(
                 self._on_context_menu
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             QgsProject.instance().readProject.disconnect(self._refresh_indicators)
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             root = QgsProject.instance().layerTreeRoot()
             root.addedChildren.disconnect(self._on_tree_changed)
             root.removedChildren.disconnect(self._on_tree_changed)
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
         self._clear_indicators()
@@ -103,7 +103,7 @@ class TransmittanceLayerCtl:
             try:
                 self.iface.removeDockWidget(self.panel)
                 self.panel.deleteLater()
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             self.panel = None
 
