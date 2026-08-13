@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 
-from qgis.PyQt.QtWidgets import QAction, QMenu
+from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush, QPen
-from qgis.PyQt.QtCore import Qt, QSize
+from qgis.PyQt.QtCore import Qt, QTimer
 from qgis.core import (
     QgsProject,
     QgsLayerTreeGroup,
-    QgsLayerTreeLayer,
 )
 from qgis.gui import QgsLayerTreeViewIndicator
 
@@ -17,15 +16,15 @@ from . import group_manager as gm
 def _make_indicator_icon():
     """インジケーター用アイコンをプログラムで生成（小さな◎）"""
     px = QPixmap(16, 16)
-    px.fill(Qt.transparent)
+    px.fill(Qt.GlobalColor.transparent)
     painter = QPainter(px)
-    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QPen(QColor('#2E86AB'), 2))
     painter.setBrush(QBrush(QColor('#A8DADC')))
     painter.drawEllipse(2, 2, 11, 11)
     # 中心に小さい点
     painter.setBrush(QBrush(QColor('#2E86AB')))
-    painter.setPen(Qt.NoPen)
+    painter.setPen(Qt.PenStyle.NoPen)
     painter.drawEllipse(5, 5, 5, 5)
     painter.end()
     return QIcon(px)
@@ -49,9 +48,12 @@ class TransmittanceLayerCtl:
 
         # パネル（DockWidget）
         self.panel = TransmittancePanel(self.iface, self.iface.mainWindow())
-        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.panel)
-        self.panel.setFloating(True)
+        self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.panel)
         self.panel.hide()
+        # setFloating() をここで即時呼ぶとWM側との折衝が間に合わず
+        # フローティング化に失敗することがあるため、イベントループが
+        # 一周した後に遅延実行する
+        QTimer.singleShot(0, lambda: self.panel.setFloating(True))
 
         # メニューアクション「選択グループをTransmittanceグループにする」
         self.action_mark = QAction(

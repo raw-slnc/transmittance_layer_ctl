@@ -2,7 +2,7 @@
 
 import json
 import re
-import sip
+from qgis.PyQt import sip
 from qgis.PyQt.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QMessageBox, QGroupBox, QApplication,
@@ -24,25 +24,24 @@ class PresetButton(QPushButton):
 
     def __init__(self, index, parent=None):
         super().__init__(f'Preset: {index}', parent)
-        self._index      = index
         self._long_fired = False
         self._timer      = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(self.LONG_PRESS_MS)
         self._timer.timeout.connect(self._on_long_press)
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
     def _on_long_press(self):
         self._long_fired = True
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._long_fired = False
             self._timer.start()
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._timer.stop()
         super().mouseReleaseEvent(event)
 
@@ -64,7 +63,7 @@ class TransmittancePanel(QDockWidget):
 
         # ドラッグによるドッキングを無効化（格納はダブルクリックのみ）
         self.setFeatures(
-            QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable
         )
         self._build_ui()
 
@@ -117,7 +116,7 @@ class TransmittancePanel(QDockWidget):
 
         # グループ名ヘッダー
         self.group_label = QLabel('— No group selected —')
-        self.group_label.setAlignment(Qt.AlignCenter)
+        self.group_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.group_label.setStyleSheet(
             'font-weight: bold; padding: 3px; color: #AAAACC; background: transparent;'
         )
@@ -137,7 +136,7 @@ class TransmittancePanel(QDockWidget):
         for i in range(1, _N_PRESETS + 1):
             btn = PresetButton(i)
             btn.setFixedHeight(26)
-            btn.setFocusPolicy(Qt.NoFocus)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.clicked.connect(lambda checked, b=btn, n=i: self._on_preset_click(b, n))
             btn._timer.timeout.connect(lambda b=btn, n=i: self._on_preset_long_press(b, n))
             btn.customContextMenuRequested.connect(
@@ -150,27 +149,27 @@ class TransmittancePanel(QDockWidget):
 
         self._label_btn = QPushButton('label')
         self._label_btn.setFixedHeight(26)
-        self._label_btn.setFocusPolicy(Qt.NoFocus)
+        self._label_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._label_btn.clicked.connect(self._on_label_toggle)
         btn_layout.addWidget(self._label_btn)
 
         self._exclusive_btn = QPushButton('Exclusive Control')
         self._exclusive_btn.setFixedHeight(26)
-        self._exclusive_btn.setFocusPolicy(Qt.NoFocus)
+        self._exclusive_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._exclusive_btn.clicked.connect(self._on_exclusive_toggle)
         btn_layout.addWidget(self._exclusive_btn)
 
         self._reset_btn = QPushButton('Reset')
         self._reset_btn.setFixedHeight(26)
         self._reset_btn.setFixedWidth(60)
-        self._reset_btn.setFocusPolicy(Qt.NoFocus)
+        self._reset_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._reset_btn.clicked.connect(self._on_reset)
         btn_layout.addWidget(self._reset_btn)
 
         self._filter_btn = QPushButton('filter')
         self._filter_btn.setFixedHeight(26)
         self._filter_btn.setFixedWidth(60)
-        self._filter_btn.setFocusPolicy(Qt.NoFocus)
+        self._filter_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._filter_btn.clicked.connect(self._on_filter_toggle)
         btn_layout.addWidget(self._filter_btn)
 
@@ -179,7 +178,7 @@ class TransmittancePanel(QDockWidget):
         # デベロッパー表示
         lbl_credit = QLabel('Developed by Avid Tree Work')
         lbl_credit.setStyleSheet('color: #AAAACC; font-size: 10px; background: transparent;')
-        lbl_credit.setAlignment(Qt.AlignCenter)
+        lbl_credit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl_credit)
 
         # シグナル接続
@@ -535,9 +534,9 @@ class TransmittancePanel(QDockWidget):
         reply = QMessageBox.question(
             self, 'Save Preset',
             f'Save current state to Preset {n}?',
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self._save_preset_data(n, self._current_state())
             self._active_preset = n
             self._update_preset_btn_style()
@@ -548,9 +547,9 @@ class TransmittancePanel(QDockWidget):
         reply = QMessageBox.question(
             self, 'Delete Preset',
             f'Delete Preset {n}?',
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self._delete_preset_data(n)
             if self._active_preset == n:
                 self._active_preset = None

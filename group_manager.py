@@ -4,9 +4,7 @@ from qgis.core import (
     QgsProject,
     QgsLayerTreeGroup,
     QgsLayerTreeLayer,
-    QgsLayerTreeNode,
 )
-from qgis.PyQt.QtWidgets import QInputDialog
 
 import json
 

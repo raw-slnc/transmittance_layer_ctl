@@ -5,7 +5,7 @@ from qgis.PyQt.QtGui import (
     QPainter, QColor, QPen, QBrush, QFont, QPainterPath,
     QFontMetricsF, QLinearGradient,
 )
-from qgis.PyQt.QtCore import Qt, QPointF, QRectF, pyqtSignal, QTimer
+from qgis.PyQt.QtCore import Qt, QPointF, QRectF, pyqtSignal
 from qgis.core import QgsProject
 
 SNAP        = 5
@@ -65,7 +65,7 @@ class CanvasWidget(QWidget):
         self._drag_owns_label = False
 
 
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     # ------------------------------------------------------------------ #
     #  Internal helpers
@@ -107,14 +107,6 @@ class CanvasWidget(QWidget):
             self._sel = None
         self.update()
 
-    def refresh_opacities(self):
-        for lid in self._layer_ids:
-            layer = self._layer(lid)
-            if layer and lid in self._data:
-                op = max(0, round(layer.opacity() * 100 / SNAP) * SNAP)
-                self._data[lid]['opacity'] = op
-        self.update()
-
     # ------------------------------------------------------------------ #
     #  座標変換
     # ------------------------------------------------------------------ #
@@ -151,7 +143,7 @@ class CanvasWidget(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         self._draw_background(p)
         self._draw_grid(p)
         self._draw_axes(p)
@@ -204,7 +196,7 @@ class CanvasWidget(QWidget):
         c_bot.setAlphaF(0.0)
         grad.setColorAt(0.0, c_top)
         grad.setColorAt(1.0, c_bot)
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(grad))
         p.drawPath(path)
 
@@ -212,7 +204,7 @@ class CanvasWidget(QWidget):
         p.fillRect(self.rect(), QColor('#1A1A2E'))
 
     def _draw_grid(self, p):
-        p.setPen(QPen(QColor('#2A2A4A'), 1, Qt.DotLine))
+        p.setPen(QPen(QColor('#2A2A4A'), 1, Qt.PenStyle.DotLine))
         dw, dh = self._dw(), self._dh()
         for s in range(SNAP, (self._n_slots + 1) * SNAP, SNAP):
             sx = MARGIN_L + s / (self._n_slots * SNAP) * dw
@@ -238,11 +230,11 @@ class CanvasWidget(QWidget):
         for s in range(10, 101, 10):
             sx = MARGIN_L + s / (self._n_slots * SNAP) * dw
             p.drawText(QRectF(sx - 12, PLOT_T + dh + 18, 24, 14),
-                       Qt.AlignCenter, str(s))
+                       Qt.AlignmentFlag.AlignCenter, str(s))
         for op in range(10, 101, 10):
             sy = PLOT_T + (100 - op) / 100 * dh
             p.drawText(QRectF(0, sy - 7, 30, 14),
-                       Qt.AlignRight | Qt.AlignVCenter, str(op))
+                       Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, str(op))
 
     def _draw_axis_label(self, p):
         font = QFont()
@@ -250,7 +242,7 @@ class CanvasWidget(QWidget):
         p.setFont(font)
         p.setPen(QColor("#9C9CB3"))
         p.drawText(QRectF(MARGIN_L, 0, self._dw(), PLOT_T),
-                   Qt.AlignLeft | Qt.AlignTop, 'Y: opacity (= 1 \u2212 transmittance)')
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, 'Y: opacity (= 1 \u2212 transmittance)')
 
     def _draw_layer(self, p, lid, name):
         d        = self._data[lid]
@@ -261,7 +253,7 @@ class CanvasWidget(QWidget):
         x_axis_y = PLOT_T + dh
 
         if lid == self._sel:
-            p.setPen(QPen(col.lighter(120), 1, Qt.DashLine))
+            p.setPen(QPen(col.lighter(120), 1, Qt.PenStyle.DashLine))
             p.drawLine(QPointF(pt.x(), PLOT_T), QPointF(pt.x(), x_axis_y))
             p.drawLine(QPointF(MARGIN_L, pt.y()), QPointF(MARGIN_L + dw, pt.y()))
 
@@ -304,7 +296,7 @@ class CanvasWidget(QWidget):
         if self._clamp_enabled:
             sy_max = PLOT_T + (100 - self._clamp_max) / 100 * dh
             sy_min = PLOT_T + (100 - self._clamp_min) / 100 * dh
-            p.setPen(Qt.NoPen)
+            p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QBrush(QColor(80, 160, 255, 25)))
             p.drawRect(QRectF(MARGIN_L, sy_max, dw, sy_min - sy_max))
 
@@ -353,11 +345,11 @@ class CanvasWidget(QWidget):
         th = fm.height() + 6
         rx = max(MARGIN_L, min(self.width() - MARGIN_R - tw, pt.x() - tw / 2))
         ry = max(PLOT_T, pt.y() - PT_RADIUS - th - 4)
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(QColor(0, 0, 0, 200)))
         p.drawRoundedRect(QRectF(rx, ry, tw, th), 3, 3)
         p.setPen(col.lighter(160))
-        p.drawText(QRectF(rx, ry, tw, th), Qt.AlignCenter, text)
+        p.drawText(QRectF(rx, ry, tw, th), Qt.AlignmentFlag.AlignCenter, text)
 
     # ------------------------------------------------------------------ #
     #  ヒット判定
@@ -413,21 +405,21 @@ class CanvasWidget(QWidget):
     def mousePressEvent(self, event):
         pos = QPointF(event.pos())
 
-        if event.button() == Qt.LeftButton and self._hit_x_triangle(pos):
+        if event.button() == Qt.MouseButton.LeftButton and self._hit_x_triangle(pos):
             self._sel_type = 'tri'
             self._drag_sym = 'tri'
             self.setFocus()
             self.update()
             return
 
-        if event.button() == Qt.LeftButton and self._hit_clamp_max(pos):
+        if event.button() == Qt.MouseButton.LeftButton and self._hit_clamp_max(pos):
             self._sel_type = 'clamp_max'
             self._drag_sym = 'clamp_max'
             self.setFocus()
             self.update()
             return
 
-        if event.button() == Qt.LeftButton and self._hit_clamp_min(pos):
+        if event.button() == Qt.MouseButton.LeftButton and self._hit_clamp_min(pos):
             self._sel_type = 'clamp_min'
             self._drag_sym = 'clamp_min'
             self.setFocus()
@@ -444,7 +436,7 @@ class CanvasWidget(QWidget):
             self.layer_selected.emit(lid)
             self.setFocus()
             self.update()
-        elif event.button() == Qt.LeftButton and not self._exclusive_mode:
+        elif event.button() == Qt.MouseButton.LeftButton and not self._exclusive_mode:
             self._sel      = None
             self._sel_type = None
             self.update()
@@ -452,7 +444,7 @@ class CanvasWidget(QWidget):
     def mouseMoveEvent(self, event):
         pos = QPointF(event.pos())
 
-        if self._drag_sym == 'tri' and (event.buttons() & Qt.LeftButton):
+        if self._drag_sym == 'tri' and (event.buttons() & Qt.MouseButton.LeftButton):
             new_pos = self._screen_to_label_pos(pos.x())
             if new_pos != self._label_pos:
                 self._emit_label_change(self._label_pos, new_pos)
@@ -460,7 +452,7 @@ class CanvasWidget(QWidget):
                 self.update()
             return
 
-        if self._drag_sym == 'clamp_max' and (event.buttons() & Qt.LeftButton):
+        if self._drag_sym == 'clamp_max' and (event.buttons() & Qt.MouseButton.LeftButton):
             new_val = self._screen_to_clamp_pos(pos.y())
             new_val = max(self._clamp_min + CLAMP_GAP, new_val)
             if new_val != self._clamp_max:
@@ -469,7 +461,7 @@ class CanvasWidget(QWidget):
                 self.update()
             return
 
-        if self._drag_sym == 'clamp_min' and (event.buttons() & Qt.LeftButton):
+        if self._drag_sym == 'clamp_min' and (event.buttons() & Qt.MouseButton.LeftButton):
             new_val = self._screen_to_clamp_pos(pos.y())
             new_val = min(self._clamp_max - CLAMP_GAP, new_val)
             if new_val != self._clamp_min:
@@ -483,7 +475,7 @@ class CanvasWidget(QWidget):
             self._hover = new_hover
             self.update()
 
-        if self._drag and (event.buttons() & Qt.LeftButton):
+        if self._drag and (event.buttons() & Qt.MouseButton.LeftButton):
             slot, op = self._to_data(pos.x(), pos.y())
             d = self._data[self._drag]
             changed = False
@@ -605,15 +597,15 @@ class CanvasWidget(QWidget):
     def keyPressEvent(self, event):
         key = event.key()
 
-        if key == Qt.Key_Tab:
+        if key == Qt.Key.Key_Tab:
             self._cycle_focus(forward=True)
             event.accept()
             return
-        if key == Qt.Key_Backtab:
+        if key == Qt.Key.Key_Backtab:
             self._cycle_focus(forward=False)
             event.accept()
             return
-        if key == Qt.Key_Space:
+        if key == Qt.Key.Key_Space:
             self._toggle_focused()
             event.accept()
             return
@@ -623,15 +615,15 @@ class CanvasWidget(QWidget):
                 event.ignore()
                 return
             d = self._data[self._sel]
-            if key == Qt.Key_Up:
+            if key == Qt.Key.Key_Up:
                 d['opacity'] = min(100, d['opacity'] + SNAP)
                 self.opacity_changed.emit(self._sel, d['opacity'])
                 self.update()
-            elif key == Qt.Key_Down:
+            elif key == Qt.Key.Key_Down:
                 d['opacity'] = max(0, d['opacity'] - SNAP)
                 self.opacity_changed.emit(self._sel, d['opacity'])
                 self.update()
-            elif key == Qt.Key_Left:
+            elif key == Qt.Key.Key_Left:
                 if self._exclusive_mode:
                     ids = self._layer_ids
                     if ids and self._sel in ids:
@@ -640,7 +632,7 @@ class CanvasWidget(QWidget):
                         self.update()
                 else:
                     self._move_order(self._sel, -1)
-            elif key == Qt.Key_Right:
+            elif key == Qt.Key.Key_Right:
                 if self._exclusive_mode:
                     ids = self._layer_ids
                     if ids and self._sel in ids:
@@ -653,13 +645,13 @@ class CanvasWidget(QWidget):
                 event.ignore()
 
         elif self._sel_type == 'tri':
-            if key == Qt.Key_Left:
+            if key == Qt.Key.Key_Left:
                 new_pos = max(0, self._label_pos - SNAP)
                 if new_pos != self._label_pos:
                     self._emit_label_change(self._label_pos, new_pos)
                     self._label_pos = new_pos
                     self.update()
-            elif key == Qt.Key_Right:
+            elif key == Qt.Key.Key_Right:
                 new_pos = min(self._n_slots * SNAP, self._label_pos + SNAP)
                 if new_pos != self._label_pos:
                     self._emit_label_change(self._label_pos, new_pos)
@@ -669,13 +661,13 @@ class CanvasWidget(QWidget):
                 event.ignore()
 
         elif self._sel_type == 'clamp_max':
-            if key == Qt.Key_Up:
+            if key == Qt.Key.Key_Up:
                 new_val = min(100, self._clamp_max + SNAP)
                 if new_val != self._clamp_max:
                     self._clamp_max = new_val
                     self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
                     self.update()
-            elif key == Qt.Key_Down:
+            elif key == Qt.Key.Key_Down:
                 new_val = max(self._clamp_min + CLAMP_GAP, self._clamp_max - SNAP)
                 if new_val != self._clamp_max:
                     self._clamp_max = new_val
@@ -685,13 +677,13 @@ class CanvasWidget(QWidget):
                 event.ignore()
 
         elif self._sel_type == 'clamp_min':
-            if key == Qt.Key_Up:
+            if key == Qt.Key.Key_Up:
                 new_val = min(self._clamp_max - CLAMP_GAP, self._clamp_min + SNAP)
                 if new_val != self._clamp_min:
                     self._clamp_min = new_val
                     self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
                     self.update()
-            elif key == Qt.Key_Down:
+            elif key == Qt.Key.Key_Down:
                 new_val = max(0, self._clamp_min - SNAP)
                 if new_val != self._clamp_min:
                     self._clamp_min = new_val
