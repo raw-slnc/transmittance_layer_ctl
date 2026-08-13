@@ -85,7 +85,7 @@ class CanvasWidget(QWidget):
     # ------------------------------------------------------------------ #
 
     def set_layers(self, layers):
-        self._layer_ids = [l.id() for l in layers]
+        self._layer_ids = [layer.id() for layer in layers]
 
         n = len(layers)
         for i, layer in enumerate(layers):

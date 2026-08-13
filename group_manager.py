@@ -112,11 +112,11 @@ def get_layers_in_order(group):
         saved_ids = json.loads(saved)
     except Exception:
         return tree_layers
-    layer_map = {l.id(): l for l in tree_layers}
+    layer_map = {layer.id(): layer for layer in tree_layers}
     ordered = [layer_map[lid] for lid in saved_ids if lid in layer_map]
     # 保存済みリストにない新規レイヤーを末尾に追加
     seen = set(saved_ids)
-    ordered += [l for l in tree_layers if l.id() not in seen]
+    ordered += [layer for layer in tree_layers if layer.id() not in seen]
     return ordered
 
 
