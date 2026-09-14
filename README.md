@@ -20,7 +20,7 @@ Tag any QGIS layer group as a **Transmittance Group**. An indicator button appea
 
 ## Requirements
 
-- QGIS 3.16 or later
+- QGIS 4.0 or later
 
 ---
 
@@ -94,13 +94,16 @@ Two **◁** markers on the right Y axis define an opacity clamp range.
 
 ### Bottom buttons
 
-| Button | Function |
-|--------|----------|
-| **Preset 1–4** | Save / load canvas states.<br>**Long-press** = save current state.<br>**Click** = apply saved state (click again to deactivate).<br>**Right-click** = delete preset. |
-| **label** | Toggle label display for the △ target layer. |
-| **Exclusive Control** | Switch to Exclusive Control mode (see below). |
-| **Reset** | Reset all layers to equal spacing on X and 60% opacity. |
-| **filter** | Toggle opacity clamping on/off. |
+| Button | Shortcut | Function |
+|--------|:--------:|----------|
+| **Preset 1–3** | 1 / 2 / 3 | Save / load canvas states.<br>**Long-press** = save current state.<br>**Click** = apply saved state (click again to deactivate).<br>**Right-click** = delete preset. |
+| **Exclusive Control** | 4 | Switch to Exclusive Control mode (see below). |
+| **Group On/Off** | 5 | Toggle visibility of the Transmittance Group itself. |
+| **label** | 6 | Toggle label display for the △ target layer. |
+| **filter** | 7 | Toggle opacity clamping on/off. |
+| **Reset** | — | Reset all layers to equal spacing on X and 60% opacity. No number-key shortcut, to avoid resetting all layers with a single accidental keypress. |
+
+Number keys 1–7 trigger the corresponding button while the panel has keyboard focus. A **?** button next to the group name opens a summary of mouse and keyboard operations, including how Left/Right arrow-key behavior changes in Exclusive Control mode.
 
 ---
 
@@ -127,12 +130,13 @@ In this mode:
 
 ## Presets
 
-Up to **4 presets** can be saved per project. Each preset stores:
+Up to **3 presets** can be saved per group (presets are not shared between groups). Each preset stores:
 
 - Opacity and position of every layer
 - Stacking order
 - Clamp range and enabled state
-- Exclusive Control on/off
+
+Presets and Exclusive Control are mutually exclusive: applying a preset turns off Exclusive Control, and turning on Exclusive Control deselects the active preset. Exclusive Control's on/off state is not saved in presets.
 
 Presets are saved inside the QGIS project file (`.qgs` / `.qgz`) and are restored when the project is reopened.
 
