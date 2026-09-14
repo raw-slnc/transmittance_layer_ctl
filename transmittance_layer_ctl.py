@@ -2,7 +2,7 @@
 
 from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush, QPen
-from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtCore import Qt
 from qgis.core import (
     QgsProject,
     QgsLayerTreeGroup,
@@ -46,14 +46,9 @@ class TransmittanceLayerCtl:
     def initGui(self):
         self._indicator_icon = _make_indicator_icon()
 
-        # パネル（DockWidget）
-        self.panel = TransmittancePanel(self.iface, self.iface.mainWindow())
-        self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.panel)
+        # パネル（常に独立ウィンドウ。ドック格納はしない。閉じるか使うかのみ）
+        self.panel = TransmittancePanel(self.iface, None)
         self.panel.hide()
-        # setFloating() をここで即時呼ぶとWM側との折衝が間に合わず
-        # フローティング化に失敗することがあるため、イベントループが
-        # 一周した後に遅延実行する
-        QTimer.singleShot(0, lambda: self.panel.setFloating(True))
 
         # メニューアクション「選択グループをTransmittanceグループにする」
         self.action_mark = QAction(
@@ -103,7 +98,7 @@ class TransmittanceLayerCtl:
 
         if self.panel:
             try:
-                self.iface.removeDockWidget(self.panel)
+                self.panel.close()
                 self.panel.deleteLater()
             except Exception:  # nosec B110
                 pass

@@ -1,20 +1,22 @@
 # -*- coding: utf-8 -*-
 
 import json
+import os
 import re
 from qgis.PyQt import sip
 from qgis.PyQt.QtWidgets import (
-    QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QMessageBox, QGroupBox, QApplication,
+    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLayout,
+    QLabel, QPushButton, QMessageBox, QGroupBox, QApplication, QShortcut,
 )
 from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtGui import QIcon, QKeySequence
 from qgis.core import QgsProject
 
 from .canvas_widget import CanvasWidget, SNAP
 from . import group_manager as gm
 
 _PRESET_SECTION = 'transmittance_layer_ctl'
-_N_PRESETS      = 4
+_N_PRESETS      = 3
 
 
 class PresetButton(QPushButton):
@@ -52,19 +54,23 @@ class PresetButton(QPushButton):
         super().enterEvent(event)
 
 
-class TransmittancePanel(QDockWidget):
+class TransmittancePanel(QDialog):
+    """常に独立ウィンドウ（ドック格納はしない）。閉じるか使うかのみ。"""
 
     def __init__(self, iface, parent=None):
-        super().__init__('Transmittance Layer ctl', parent)
+        super().__init__(
+            parent,
+            Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint,
+        )
+        self.setWindowTitle('Transmittance Layer ctl')
+        self.setWindowIcon(
+            QIcon(os.path.join(os.path.dirname(__file__), 'icon.png'))
+        )
         self.iface          = iface
         self.current_group  = None
         self._active_preset = None  # 1〜3 or None
         self._positioned    = False  # 初回表示位置調整フラグ
 
-        # ドラッグによるドッキングを無効化（格納はダブルクリックのみ）
-        self.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable
-        )
         self._build_ui()
 
     # ------------------------------------------------------------------ #
@@ -106,21 +112,37 @@ class TransmittancePanel(QDockWidget):
     """
 
     def _build_ui(self):
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        # ウィンドウ枠ドラッグでのサイズ変更を禁止し、内容に合わせた固定サイズにする
+        outer_layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
         container = QWidget()
         container.setStyleSheet(self._DARK_SS)
         container.setMaximumHeight(380)
-        self.setWidget(container)
+        outer_layout.addWidget(container)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # グループ名ヘッダー
+        # グループ名ヘッダー（右端に簡易操作ヘルプ）
+        header_row = QHBoxLayout()
+        header_row.addStretch(1)
         self.group_label = QLabel('— No group selected —')
         self.group_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.group_label.setStyleSheet(
             'font-weight: bold; padding: 3px; color: #AAAACC; background: transparent;'
         )
-        layout.addWidget(self.group_label)
+        header_row.addWidget(self.group_label)
+        header_row.addStretch(1)
+
+        self._help_btn = QPushButton('?')
+        self._help_btn.setFixedSize(20, 20)
+        self._help_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._help_btn.setToolTip('Show operation help')
+        self._help_btn.clicked.connect(self._on_help_clicked)
+        header_row.addWidget(self._help_btn)
+
+        layout.addLayout(header_row)
 
         # キャンバス
         self.canvas = CanvasWidget()
@@ -147,24 +169,23 @@ class TransmittancePanel(QDockWidget):
 
         btn_layout.addStretch()
 
-        self._label_btn = QPushButton('label')
-        self._label_btn.setFixedHeight(26)
-        self._label_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._label_btn.clicked.connect(self._on_label_toggle)
-        btn_layout.addWidget(self._label_btn)
-
         self._exclusive_btn = QPushButton('Exclusive Control')
         self._exclusive_btn.setFixedHeight(26)
         self._exclusive_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._exclusive_btn.clicked.connect(self._on_exclusive_toggle)
         btn_layout.addWidget(self._exclusive_btn)
 
-        self._reset_btn = QPushButton('Reset')
-        self._reset_btn.setFixedHeight(26)
-        self._reset_btn.setFixedWidth(60)
-        self._reset_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._reset_btn.clicked.connect(self._on_reset)
-        btn_layout.addWidget(self._reset_btn)
+        self._group_onoff_btn = QPushButton('Group On/Off')
+        self._group_onoff_btn.setFixedHeight(26)
+        self._group_onoff_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._group_onoff_btn.clicked.connect(self._on_group_onoff_toggle)
+        btn_layout.addWidget(self._group_onoff_btn)
+
+        self._label_btn = QPushButton('label')
+        self._label_btn.setFixedHeight(26)
+        self._label_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._label_btn.clicked.connect(self._on_label_toggle)
+        btn_layout.addWidget(self._label_btn)
 
         self._filter_btn = QPushButton('filter')
         self._filter_btn.setFixedHeight(26)
@@ -172,6 +193,13 @@ class TransmittancePanel(QDockWidget):
         self._filter_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._filter_btn.clicked.connect(self._on_filter_toggle)
         btn_layout.addWidget(self._filter_btn)
+
+        self._reset_btn = QPushButton('Reset')
+        self._reset_btn.setFixedHeight(26)
+        self._reset_btn.setFixedWidth(60)
+        self._reset_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._reset_btn.clicked.connect(self._on_reset)
+        btn_layout.addWidget(self._reset_btn)
 
         layout.addWidget(group_box)
 
@@ -192,14 +220,27 @@ class TransmittancePanel(QDockWidget):
 
         self._update_preset_btn_style()
         self._update_label_btn_style()
+        self._update_group_onoff_btn_style()
+
+        # 数字キー1〜7をボタン列（Reset除く）に割り当て
+        shortcut_buttons = [
+            *self._preset_btns,
+            self._exclusive_btn,
+            self._group_onoff_btn,
+            self._label_btn,
+            self._filter_btn,
+        ]
+        self._number_shortcuts = []
+        for i, btn in enumerate(shortcut_buttons, start=1):
+            shortcut = QShortcut(QKeySequence(str(i)), self)
+            shortcut.activated.connect(btn.click)
+            self._number_shortcuts.append(shortcut)
 
     # ------------------------------------------------------------------ #
     #  Public API
     # ------------------------------------------------------------------ #
 
     def _move_to_top_right(self):
-        if not self.isFloating():
-            return
         main_win = self.iface.mainWindow()
         main_center = main_win.geometry().center()
         screen = next(
@@ -224,6 +265,7 @@ class TransmittancePanel(QDockWidget):
         self.group_label.setText(group_node.name())
         self._reload()
         self._update_preset_btn_style()
+        self._update_group_onoff_btn_style()
         self.show()
         self.raise_()
         self.activateWindow()
@@ -343,9 +385,27 @@ class TransmittancePanel(QDockWidget):
         else:
             self._label_btn.setStyleSheet('')
 
+    def _on_group_onoff_toggle(self):
+        group = self._valid_group()
+        if group is None:
+            return
+        group.setItemVisibilityChecked(not group.isVisible())
+        self._update_group_onoff_btn_style()
+
+    def _update_group_onoff_btn_style(self):
+        group = self._valid_group()
+        if group is not None and group.isVisible():
+            self._group_onoff_btn.setStyleSheet('color: #4488FF; font-weight: bold;')
+        else:
+            self._group_onoff_btn.setStyleSheet('')
+
     def _on_exclusive_toggle(self):
         self.canvas._exclusive_mode = not self.canvas._exclusive_mode
         if self.canvas._exclusive_mode:
+            # Exclusive ControlはプリセットIとは別種の「状態」として、
+            # 番号付きプリセットのアクティブ表示とは排他的に扱う。
+            self._active_preset = None
+            self._update_preset_btn_style()
             sel = self.canvas._sel
             if sel and sel in self.canvas._data:
                 self.canvas._apply_exclusive(sel)
@@ -394,6 +454,25 @@ class TransmittancePanel(QDockWidget):
             self._filter_btn.setStyleSheet('color: #4488FF; font-weight: bold;')
         else:
             self._filter_btn.setStyleSheet('')
+
+    def _on_help_clicked(self):
+        QMessageBox.information(
+            self,
+            'Transmittance Layer ctl — Operation Help',
+            '<b>Mouse</b><br>'
+            '&bull; Drag a dot: adjust order (left/right) and opacity (up/down)<br>'
+            '&bull; Click a dot: toggle layer visibility<br>'
+            '<br>'
+            '<b>Keyboard</b><br>'
+            '&bull; Tab / Shift+Tab: move focus between elements<br>'
+            '&bull; Space: toggle visibility of the focused element<br>'
+            '&bull; ↑ / ↓ (layer selected): adjust opacity<br>'
+            '&bull; ← / → (layer selected): reorder layers<br>'
+            '&nbsp;&nbsp;&nbsp;→ in Exclusive Control mode: cycle which layer is shown alone<br>'
+            '&bull; ← / → (label marker selected): move label position<br>'
+            '&bull; ↑ / ↓ (clamp marker selected): adjust clamp range<br>'
+            '&bull; 1–7: trigger the corresponding button below',
+        )
 
     # ------------------------------------------------------------------ #
     #  プリセット
@@ -454,10 +533,15 @@ class TransmittancePanel(QDockWidget):
                 'min'    : self.canvas._clamp_min,
                 'max'    : self.canvas._clamp_max,
             },
-            'exclusive': self.canvas._exclusive_mode,
         }
 
     def _apply_state(self, data):
+        # プリセットとExclusive Controlは独立した機能として排他的に扱う。
+        # プリセット適用時は必ずExclusive Controlを解除する。
+        if self.canvas._exclusive_mode:
+            self.canvas._exclusive_mode = False
+            self._update_exclusive_btn_style()
+
         # レイヤー順序（現グループにある IDのみ）
         saved_order   = data.get('order', [])
         current_ids   = set(self.canvas._data.keys())
@@ -490,10 +574,6 @@ class TransmittancePanel(QDockWidget):
         self.canvas._clamp_min     = clamp.get('min', 0)
         self.canvas._clamp_max     = clamp.get('max', 100)
         self._update_filter_btn_style()
-
-        # Exclusive Control
-        self.canvas._exclusive_mode = data.get('exclusive', False)
-        self._update_exclusive_btn_style()
 
         self._apply_all_opacities()
         self.canvas.update()
