@@ -56,7 +56,8 @@ class TransmittanceLayerCtl:
             self.iface.mainWindow()
         )
         self.action_mark.triggered.connect(self._mark_selected_group)
-        self.iface.addPluginToVectorMenu('Transmittance Layer ctl', self.action_mark)
+        self.iface.addPluginToVectorMenu(
+            'Transmittance Layer ctl', self.action_mark)
 
         # レイヤーツリーのコンテキストメニューに追加
         self.iface.layerTreeView().contextMenuAboutToShow.connect(
@@ -74,7 +75,8 @@ class TransmittanceLayerCtl:
 
     def unload(self):
         try:
-            self.iface.removePluginVectorMenu('Transmittance Layer ctl', self.action_mark)
+            self.iface.removePluginVectorMenu(
+                'Transmittance Layer ctl', self.action_mark)
         except Exception:  # nosec B110
             pass
         try:
@@ -84,7 +86,8 @@ class TransmittanceLayerCtl:
         except Exception:  # nosec B110
             pass
         try:
-            QgsProject.instance().readProject.disconnect(self._refresh_indicators)
+            QgsProject.instance().readProject.disconnect(
+                self._refresh_indicators)
         except Exception:  # nosec B110
             pass
         try:

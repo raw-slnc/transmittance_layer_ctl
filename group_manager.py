@@ -8,8 +8,10 @@ from qgis.core import (
 
 import json
 
-PROP_KEY   = 'transmittance_ctl'
+PROP_KEY = 'transmittance_ctl'
 PROP_ORDER = 'transmittance_order'   # 順序保存用カスタムプロパティ
+PROP_RESET_OPACITY = 'transmittance_reset_opacity'
+PROP_PANEL_STATE = 'transmittance_panel_state'
 
 
 def is_transmittance_group(node):
@@ -22,6 +24,8 @@ def is_transmittance_group(node):
 def mark_group(node):
     """グループをTransmittanceグループとしてタグ付けする"""
     node.setCustomProperty(PROP_KEY, '1')
+    if not node.customProperty(PROP_RESET_OPACITY):
+        save_reset_opacities(node)
 
 
 def unmark_group(node):
@@ -43,9 +47,58 @@ def get_layers(group):
     return result
 
 
+def save_reset_opacities(group):
+    """Transmittance適用時の不透明度をReset用に保存する"""
+    values = {}
+    for layer in get_layers(group):
+        values[layer.id()] = round(layer.opacity() * 100)
+    group.setCustomProperty(PROP_RESET_OPACITY, json.dumps(values))
+
+
+def has_reset_opacities(group):
+    return bool(group.customProperty(PROP_RESET_OPACITY))
+
+
+def get_reset_opacities(group):
+    saved = group.customProperty(PROP_RESET_OPACITY)
+    if not saved:
+        return {}
+    try:
+        values = json.loads(saved)
+    except Exception:
+        return {}
+    if not isinstance(values, dict):
+        return {}
+    result = {}
+    for lid, op in values.items():
+        try:
+            result[lid] = max(0, min(100, int(op)))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def set_panel_state(group, state):
+    group.setCustomProperty(PROP_PANEL_STATE, json.dumps(state))
+
+
+def get_panel_state(group):
+    saved = group.customProperty(PROP_PANEL_STATE)
+    if not saved:
+        return {}
+    try:
+        state = json.loads(saved)
+    except Exception:
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
 def set_layer_opacity(layer, opacity_percent):
     """不透明度を0-100%で設定"""
-    layer.setOpacity(opacity_percent / 100.0)
+    opacity = max(0.0, min(1.0, opacity_percent / 100.0))
+    if abs(layer.opacity() - opacity) < 0.0005:
+        return
+    layer.setOpacity(opacity)
     layer.triggerRepaint()
 
 

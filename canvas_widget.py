@@ -8,16 +8,16 @@ from qgis.PyQt.QtGui import (
 from qgis.PyQt.QtCore import Qt, QPointF, QRectF, pyqtSignal
 from qgis.core import QgsProject
 
-SNAP        = 5
-PT_RADIUS   = 5
-MARGIN_L    = 56
-MARGIN_B    = 38
-MARGIN_T    = 16
-PLOT_T      = MARGIN_T * 1.2   # グラフ上端（ラベル表示領域の分を追加）
-MARGIN_R    = 46
-SYM_SIZE    = 6
-SYM_HIT     = 10
-CLAMP_GAP   = 5
+SNAP = 5
+PT_RADIUS = 5
+MARGIN_L = 56
+MARGIN_B = 38
+MARGIN_T = 16
+PLOT_T = MARGIN_T * 1.2   # グラフ上端（ラベル表示領域の分を追加）
+MARGIN_R = 46
+SYM_SIZE = 6
+SYM_HIT = 10
+CLAMP_GAP = 5
 
 LAYER_COLORS = [
     '#E63946', '#2A9D8F', '#F4A261', '#A8DADC', '#E9C46A',
@@ -29,13 +29,14 @@ LAYER_COLORS = [
 class CanvasWidget(QWidget):
     """2Dキャンバス: X=レイヤー順序, Y=不透明度"""
 
-    opacity_changed      = pyqtSignal(str, int)
-    order_changed        = pyqtSignal(list)
-    label_toggled        = pyqtSignal(str, bool)
-    layer_selected       = pyqtSignal(str)
-    visibility_toggled   = pyqtSignal(str, bool)
-    clamp_changed        = pyqtSignal(bool, int, int)  # (enabled, min, max)
-    indicators_toggled   = pyqtSignal(bool)            # _indicators_visible 変更通知
+    opacity_changed = pyqtSignal(str, int)
+    order_changed = pyqtSignal(list)
+    label_toggled = pyqtSignal(str, bool)
+    layer_selected = pyqtSignal(str)
+    visibility_toggled = pyqtSignal(str, bool)
+    clamp_changed = pyqtSignal(bool, int, int)  # (enabled, min, max)
+    indicators_toggled = pyqtSignal(bool)            # _indicators_visible 変更通知
+    interaction_finished = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -43,27 +44,28 @@ class CanvasWidget(QWidget):
         self.setMouseTracking(True)
 
         self._layer_ids = []
-        self._data      = {}
-        self._n_slots   = 20
-        self._sel       = None
-        self._sel_type  = None
-        self._drag      = None
-        self._hover     = None
+        self._data = {}
+        self._n_slots = 20
+        self._sel = None
+        self._sel_type = None
+        self._drag = None
+        self._hover = None
+        self._drag_add_to_exclusive_set = False
 
         self._label_pos = SNAP
-        self._drag_sym  = None
+        self._drag_sym = None
 
-        self._clamp_max     = 100
-        self._clamp_min     = 0
+        self._clamp_max = 100
+        self._clamp_min = 0
         self._clamp_enabled = False
 
         self._exclusive_mode = False
+        self._exclusive_groups = []
 
-        self._label_owner        = None   # △ のオーナー layer_id
+        self._label_owner = None   # △ のオーナー layer_id
         self._indicators_visible = True   # △ の表示/操作を有効化
 
         self._drag_owns_label = False
-
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -76,7 +78,8 @@ class CanvasWidget(QWidget):
 
     def _label_layer(self):
         for lid in self._layer_ids:
-            if lid in self._data and self._data[lid]['slot'] == self._label_pos:
+            if (lid in self._data
+                    and self._data[lid]['slot'] == self._label_pos):
                 return lid
         return None
 
@@ -84,25 +87,28 @@ class CanvasWidget(QWidget):
     #  Public API
     # ------------------------------------------------------------------ #
 
-    def set_layers(self, layers):
+    def set_layers(self, layers, default_opacities=None):
+        default_opacities = default_opacities or {}
         self._layer_ids = [layer.id() for layer in layers]
 
         n = len(layers)
         for i, layer in enumerate(layers):
             lid = layer.id()
-            t     = i / (n - 1) if n > 1 else 0.5
+            t = i / (n - 1) if n > 1 else 0.5
             inner = self._n_slots * SNAP - 2 * SNAP   # 両端に1SNAP余白
-            diag  = SNAP + max(0, min(inner, round(t * inner / SNAP) * SNAP))
-            old  = self._data.get(lid, {})
+            diag = SNAP + max(0, min(inner, round(t * inner / SNAP) * SNAP))
+            old = self._data.get(lid, {})
+            default_opacity = default_opacities.get(lid, 60)
             self._data[lid] = {
-                'slot'   : old.get('slot',    diag),
-                'opacity': old.get('opacity', 60),
-                'color'  : QColor(LAYER_COLORS[i % len(LAYER_COLORS)]),
+                'slot': old.get('slot', diag),
+                'opacity': old.get('opacity', default_opacity),
+                'color': QColor(LAYER_COLORS[i % len(LAYER_COLORS)]),
                 'visible': old.get('visible', True),
             }
 
         active = set(self._layer_ids)
         self._data = {k: v for k, v in self._data.items() if k in active}
+        self._prune_exclusive_groups()
         if self._sel not in active:
             self._sel = None
         self.update()
@@ -112,7 +118,7 @@ class CanvasWidget(QWidget):
     # ------------------------------------------------------------------ #
 
     def _dw(self):
-        return self.width()  - MARGIN_L - MARGIN_R
+        return self.width() - MARGIN_L - MARGIN_R
 
     def _dh(self):
         return self.height() - PLOT_T - MARGIN_B
@@ -125,8 +131,8 @@ class CanvasWidget(QWidget):
     def _to_data(self, sx, sy):
         x_raw = (sx - MARGIN_L) / self._dw() * (self._n_slots * SNAP)
         y_raw = 100 - (sy - PLOT_T) / self._dh() * 100
-        slot  = max(0, min(self._n_slots * SNAP, round(x_raw / SNAP) * SNAP))
-        op    = max(0, min(100, round(y_raw / SNAP) * SNAP))
+        slot = max(0, min(self._n_slots * SNAP, round(x_raw / SNAP) * SNAP))
+        op = max(0, min(100, round(y_raw / SNAP) * SNAP))
         return slot, op
 
     def _screen_to_label_pos(self, sx):
@@ -164,21 +170,21 @@ class CanvasWidget(QWidget):
         d = self._data[lid]
         if d['opacity'] == 60:
             return
-        apex       = self._to_screen(d['slot'], d['opacity'])
+        apex = self._to_screen(d['slot'], d['opacity'])
         base_y_val = PLOT_T + (100 - 60) / 100 * self._dh()
-        base_left  = QPointF(MARGIN_L,              base_y_val)
+        base_left = QPointF(MARGIN_L,              base_y_val)
         base_right = QPointF(MARGIN_L + self._dw(), base_y_val)
         # 左辺: 底辺で垂直立ち上がり → 頂点で水平
         # 右辺: 頂点で水平 → 底辺で垂直降下
         path = QPainterPath()
-        base_y   = base_left.y()
-        left_w   = apex.x() - MARGIN_L
-        right_w  = MARGIN_L + self._dw() - apex.x()
-        relax    = 0.09   # 頂点の緩み（0=垂直, 1=水平）
+        base_y = base_left.y()
+        left_w = apex.x() - MARGIN_L
+        right_w = MARGIN_L + self._dw() - apex.x()
+        relax = 0.09   # 頂点の緩み（0=垂直, 1=水平）
         path.moveTo(base_left)
         path.cubicTo(
             QPointF(apex.x(),               base_y),
-            QPointF(apex.x() - left_w  * relax, apex.y()),
+            QPointF(apex.x() - left_w * relax, apex.y()),
             apex,
         )
         path.cubicTo(
@@ -187,12 +193,12 @@ class CanvasWidget(QWidget):
             base_right,
         )
         path.closeSubpath()
-        col      = d['color']
-        base_y   = base_left.y()
-        grad     = QLinearGradient(apex.x(), apex.y(), apex.x(), base_y)
-        c_top    = QColor(col)
+        col = d['color']
+        base_y = base_left.y()
+        grad = QLinearGradient(apex.x(), apex.y(), apex.x(), base_y)
+        c_top = QColor(col)
         c_top.setAlphaF(0.23)
-        c_bot    = QColor(col)
+        c_bot = QColor(col)
         c_bot.setAlphaF(0.0)
         grad.setColorAt(0.0, c_top)
         grad.setColorAt(1.0, c_bot)
@@ -202,9 +208,11 @@ class CanvasWidget(QWidget):
 
     def _draw_background(self, p):
         p.fillRect(self.rect(), QColor('#1A1A2E'))
+        p.fillRect(QRectF(MARGIN_L, PLOT_T, self._dw(), self._dh()),
+                   QColor('#202C34'))
 
     def _draw_grid(self, p):
-        p.setPen(QPen(QColor('#2A2A4A'), 1, Qt.PenStyle.DotLine))
+        p.setPen(QPen(QColor('#52657A'), 1, Qt.PenStyle.DotLine))
         dw, dh = self._dw(), self._dh()
         for s in range(SNAP, (self._n_slots + 1) * SNAP, SNAP):
             sx = MARGIN_L + s / (self._n_slots * SNAP) * dw
@@ -234,7 +242,9 @@ class CanvasWidget(QWidget):
         for op in range(10, 101, 10):
             sy = PLOT_T + (100 - op) / 100 * dh
             p.drawText(QRectF(0, sy - 7, 30, 14),
-                       Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, str(op))
+                       Qt.AlignmentFlag.AlignRight
+                       | Qt.AlignmentFlag.AlignVCenter,
+                       str(op))
 
     def _draw_axis_label(self, p):
         font = QFont()
@@ -242,22 +252,24 @@ class CanvasWidget(QWidget):
         p.setFont(font)
         p.setPen(QColor("#9C9CB3"))
         p.drawText(QRectF(MARGIN_L, 0, self._dw(), PLOT_T),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, 'Y: opacity (= 1 \u2212 transmittance)')
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                   'Y: opacity (= 1 \u2212 transmittance)')
 
     def _draw_layer(self, p, lid, name):
-        d        = self._data[lid]
-        pt       = self._to_screen(d['slot'], d['opacity'])
-        col      = d['color']
-        dh       = self._dh()
-        dw       = self._dw()
+        d = self._data[lid]
+        pt = self._to_screen(d['slot'], d['opacity'])
+        col = d['color']
+        dh = self._dh()
+        dw = self._dw()
         x_axis_y = PLOT_T + dh
 
         if lid == self._sel:
             p.setPen(QPen(col.lighter(120), 1, Qt.PenStyle.DashLine))
             p.drawLine(QPointF(pt.x(), PLOT_T), QPointF(pt.x(), x_axis_y))
-            p.drawLine(QPointF(MARGIN_L, pt.y()), QPointF(MARGIN_L + dw, pt.y()))
+            p.drawLine(QPointF(MARGIN_L, pt.y()),
+                       QPointF(MARGIN_L + dw, pt.y()))
 
-        r       = PT_RADIUS + (2 if lid == self._sel else 0)
+        r = PT_RADIUS + (2 if lid == self._sel else 0)
         visible = d.get('visible', True)
         p.setOpacity(1.0 if visible else 0.3)
         if lid == self._sel:
@@ -270,8 +282,10 @@ class CanvasWidget(QWidget):
         p.drawEllipse(pt, r, r)
         if not visible:
             p.setPen(QPen(QColor('#AAAAAA'), 1.5))
-            p.drawLine(pt + QPointF(-r * 0.6, -r * 0.6), pt + QPointF(r * 0.6,  r * 0.6))
-            p.drawLine(pt + QPointF( r * 0.6, -r * 0.6), pt + QPointF(-r * 0.6, r * 0.6))
+            p.drawLine(pt + QPointF(-r * 0.6, -r * 0.6),
+                       pt + QPointF(r * 0.6, r * 0.6))
+            p.drawLine(pt + QPointF(r * 0.6, -r * 0.6),
+                       pt + QPointF(-r * 0.6, r * 0.6))
         p.setOpacity(1.0)
         p.setPen(QPen(QColor('#666688'), 1))
 
@@ -287,10 +301,11 @@ class CanvasWidget(QWidget):
 
         if self._indicators_visible:
             # △: _label_pos のX位置
-            sx  = MARGIN_L + self._label_pos / (self._n_slots * SNAP) * dw
+            sx = MARGIN_L + self._label_pos / (self._n_slots * SNAP) * dw
             lid = self._label_layer()
             col = self._data[lid]['color'] if lid else QColor('#888899')
-            self._draw_triangle(p, QPointF(sx, PLOT_T + dh), col, self._sel_type == 'tri')
+            self._draw_triangle(p, QPointF(sx, PLOT_T + dh), col,
+                                self._sel_type == 'tri')
 
         # クランプ帯域（有効時）
         if self._clamp_enabled:
@@ -301,14 +316,16 @@ class CanvasWidget(QWidget):
             p.drawRect(QRectF(MARGIN_L, sy_max, dw, sy_min - sy_max))
 
         # ◁ clamp_max（右Y軸・上限）
-        sy_max  = PLOT_T + (100 - self._clamp_max) / 100 * dh
-        col_max = QColor('#4488FF') if self._clamp_enabled else QColor('#555577')
+        sy_max = PLOT_T + (100 - self._clamp_max) / 100 * dh
+        col_max = (QColor('#4488FF') if self._clamp_enabled
+                   else QColor('#555577'))
         self._draw_left_arrow(p, QPointF(MARGIN_L + dw, sy_max), col_max,
                               self._sel_type == 'clamp_max')
 
         # ◁ clamp_min（右Y軸・下限）
-        sy_min  = PLOT_T + (100 - self._clamp_min) / 100 * dh
-        col_min = QColor('#44AAFF') if self._clamp_enabled else QColor('#555577')
+        sy_min = PLOT_T + (100 - self._clamp_min) / 100 * dh
+        col_min = (QColor('#44AAFF') if self._clamp_enabled
+                   else QColor('#555577'))
         self._draw_left_arrow(p, QPointF(MARGIN_L + dw, sy_min), col_min,
                               self._sel_type == 'clamp_min')
 
@@ -359,7 +376,8 @@ class CanvasWidget(QWidget):
         for lid in reversed(self._layer_ids):
             if lid not in self._data:
                 continue
-            pt = self._to_screen(self._data[lid]['slot'], self._data[lid]['opacity'])
+            pt = self._to_screen(self._data[lid]['slot'],
+                                 self._data[lid]['opacity'])
             if (pos - pt).manhattanLength() <= PT_RADIUS + 5:
                 return lid
         return None
@@ -369,19 +387,22 @@ class CanvasWidget(QWidget):
             return False
         # 先端が y_axis + 4、底辺中心が y_axis + 4 + SYM_SIZE*0.8
         y_axis = PLOT_T + self._dh()
-        sx     = MARGIN_L + self._label_pos / (self._n_slots * SNAP) * self._dw()
-        return abs(pos.x() - sx) <= SYM_HIT and abs(pos.y() - (y_axis + 4 + SYM_SIZE)) <= SYM_HIT
+        sx = MARGIN_L + self._label_pos / (self._n_slots * SNAP) * self._dw()
+        return (abs(pos.x() - sx) <= SYM_HIT
+                and abs(pos.y() - (y_axis + 4 + SYM_SIZE)) <= SYM_HIT)
 
     def _hit_clamp_max(self, pos):
         # 先端が sx+6、底辺が sx+6+SYM_SIZE*1.6、中心 sx+6+SYM_SIZE*0.8
         sx = MARGIN_L + self._dw()
         sy = PLOT_T + (100 - self._clamp_max) / 100 * self._dh()
-        return abs(pos.x() - (sx + 6 + SYM_SIZE)) <= SYM_HIT and abs(pos.y() - sy) <= SYM_HIT
+        return (abs(pos.x() - (sx + 6 + SYM_SIZE)) <= SYM_HIT
+                and abs(pos.y() - sy) <= SYM_HIT)
 
     def _hit_clamp_min(self, pos):
         sx = MARGIN_L + self._dw()
         sy = PLOT_T + (100 - self._clamp_min) / 100 * self._dh()
-        return abs(pos.x() - (sx + 6 + SYM_SIZE)) <= SYM_HIT and abs(pos.y() - sy) <= SYM_HIT
+        return (abs(pos.x() - (sx + 6 + SYM_SIZE)) <= SYM_HIT
+                and abs(pos.y() - sy) <= SYM_HIT)
 
     # ------------------------------------------------------------------ #
     #  label_toggled 発火ヘルパー
@@ -391,7 +412,8 @@ class CanvasWidget(QWidget):
         old_lid = self._label_owner  # 追跡済みオーナーを使用（位置検索より確実）
         new_lid = next(
             (lid for lid in self._layer_ids
-             if lid in self._data and self._data[lid]['slot'] == new_pos), None)
+             if lid in self._data and self._data[lid]['slot'] == new_pos),
+            None)
         if old_lid and old_lid != new_lid:
             self.label_toggled.emit(old_lid, False)
         if new_lid and new_lid != old_lid:
@@ -405,21 +427,24 @@ class CanvasWidget(QWidget):
     def mousePressEvent(self, event):
         pos = QPointF(event.pos())
 
-        if event.button() == Qt.MouseButton.LeftButton and self._hit_x_triangle(pos):
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self._hit_x_triangle(pos)):
             self._sel_type = 'tri'
             self._drag_sym = 'tri'
             self.setFocus()
             self.update()
             return
 
-        if event.button() == Qt.MouseButton.LeftButton and self._hit_clamp_max(pos):
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self._hit_clamp_max(pos)):
             self._sel_type = 'clamp_max'
             self._drag_sym = 'clamp_max'
             self.setFocus()
             self.update()
             return
 
-        if event.button() == Qt.MouseButton.LeftButton and self._hit_clamp_min(pos):
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self._hit_clamp_min(pos)):
             self._sel_type = 'clamp_min'
             self._drag_sym = 'clamp_min'
             self.setFocus()
@@ -428,23 +453,28 @@ class CanvasWidget(QWidget):
 
         lid = self._hit_point(pos)
         if lid:
-            self._sel      = lid
+            self._sel = lid
             self._sel_type = 'point'
-            self._drag     = lid
+            self._drag = lid
             self._did_drag = False
+            self._drag_add_to_exclusive_set = bool(
+                event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            )
             self._drag_owns_label = (lid == self._label_owner)
             self.layer_selected.emit(lid)
             self.setFocus()
             self.update()
-        elif event.button() == Qt.MouseButton.LeftButton and not self._exclusive_mode:
-            self._sel      = None
+        elif (event.button() == Qt.MouseButton.LeftButton
+                and not self._exclusive_mode):
+            self._sel = None
             self._sel_type = None
             self.update()
 
     def mouseMoveEvent(self, event):
         pos = QPointF(event.pos())
 
-        if self._drag_sym == 'tri' and (event.buttons() & Qt.MouseButton.LeftButton):
+        if (self._drag_sym == 'tri'
+                and (event.buttons() & Qt.MouseButton.LeftButton)):
             new_pos = self._screen_to_label_pos(pos.x())
             if new_pos != self._label_pos:
                 self._emit_label_change(self._label_pos, new_pos)
@@ -452,21 +482,25 @@ class CanvasWidget(QWidget):
                 self.update()
             return
 
-        if self._drag_sym == 'clamp_max' and (event.buttons() & Qt.MouseButton.LeftButton):
+        if (self._drag_sym == 'clamp_max'
+                and (event.buttons() & Qt.MouseButton.LeftButton)):
             new_val = self._screen_to_clamp_pos(pos.y())
             new_val = max(self._clamp_min + CLAMP_GAP, new_val)
             if new_val != self._clamp_max:
                 self._clamp_max = new_val
-                self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
+                self.clamp_changed.emit(
+                    self._clamp_enabled, self._clamp_min, self._clamp_max)
                 self.update()
             return
 
-        if self._drag_sym == 'clamp_min' and (event.buttons() & Qt.MouseButton.LeftButton):
+        if (self._drag_sym == 'clamp_min'
+                and (event.buttons() & Qt.MouseButton.LeftButton)):
             new_val = self._screen_to_clamp_pos(pos.y())
             new_val = min(self._clamp_max - CLAMP_GAP, new_val)
             if new_val != self._clamp_min:
                 self._clamp_min = new_val
-                self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
+                self.clamp_changed.emit(
+                    self._clamp_enabled, self._clamp_min, self._clamp_max)
                 self.update()
             return
 
@@ -495,13 +529,17 @@ class CanvasWidget(QWidget):
     def mouseReleaseEvent(self, event):
         if self._drag_sym:
             self._drag_sym = None
+            self.interaction_finished.emit()
             return
         if self._drag:
             was_lid = self._drag
+            add_to_exclusive_set = self._drag_add_to_exclusive_set
             self._drag = None
+            self._drag_add_to_exclusive_set = False
             if not self._did_drag and was_lid in self._data:
                 if self._exclusive_mode:
-                    self._apply_exclusive(was_lid)
+                    self._apply_exclusive(
+                        was_lid, add_to_set=add_to_exclusive_set)
                 else:
                     d = self._data[was_lid]
                     d['visible'] = not d['visible']
@@ -509,6 +547,7 @@ class CanvasWidget(QWidget):
                 self.update()
             elif self._did_drag:
                 self._commit_order()
+            self.interaction_finished.emit()
 
     # ------------------------------------------------------------------ #
     #  順序コミット
@@ -528,20 +567,79 @@ class CanvasWidget(QWidget):
             self.order_changed.emit(sorted_ids)
         self.update()
 
-    def _apply_exclusive(self, target_lid):
+    def _visible_ids(self):
+        return {
+            lid for lid in self._layer_ids
+            if lid in self._data and self._data[lid].get('visible', False)
+        }
+
+    def _prune_exclusive_groups(self):
+        active = set(self._layer_ids)
+        groups = []
+        for group in self._exclusive_groups:
+            clean = {lid for lid in group if lid in active}
+            if len(clean) > 1 and clean not in groups:
+                groups.append(clean)
+        self._exclusive_groups = groups
+
+    def _exclusive_group_for(self, layer_id):
+        for group in self._exclusive_groups:
+            if layer_id in group:
+                return set(group)
+        return None
+
+    def _exclusive_group_matching_visible(self):
+        visible = self._visible_ids()
+        for i, group in enumerate(self._exclusive_groups):
+            if group == visible:
+                return i, set(group)
+        return None, None
+
+    def _remember_exclusive_group(self, group, group_index=None):
+        groups = []
+        for i, existing in enumerate(self._exclusive_groups):
+            if i == group_index:
+                continue
+            clean = existing - group
+            if len(clean) > 1:
+                groups.append(clean)
+        groups.append(set(group))
+        self._exclusive_groups = groups
+        self._prune_exclusive_groups()
+
+    def _apply_exclusive(self, target_lid, add_to_set=False):
+        if add_to_set:
+            group_index, group = self._exclusive_group_matching_visible()
+            if group is None:
+                group = self._visible_ids()
+            if target_lid in group and len(group) > 1:
+                group.remove(target_lid)
+            else:
+                group.add(target_lid)
+
+            if len(group) > 1:
+                self._remember_exclusive_group(group, group_index)
+                active = set(group)
+            else:
+                if group_index is not None:
+                    self._exclusive_groups.pop(group_index)
+                active = set(group) if group else {target_lid}
+        else:
+            active = self._exclusive_group_for(target_lid) or {target_lid}
+
         for lid in self._layer_ids:
             if lid not in self._data:
                 continue
-            vis = (lid == target_lid)
+            vis = (lid in active)
             self._data[lid]['visible'] = vis
             self.visibility_toggled.emit(lid, vis)
         for lid in self._layer_ids:
             if lid in self._data:
                 show = self._indicators_visible and (lid == target_lid)
                 self.label_toggled.emit(lid, show)
-        self._label_pos   = self._data[target_lid]['slot']
+        self._label_pos = self._data[target_lid]['slot']
         self._label_owner = target_lid
-        self._sel      = target_lid
+        self._sel = target_lid
         self._sel_type = 'point'
         self.layer_selected.emit(target_lid)
 
@@ -568,12 +666,14 @@ class CanvasWidget(QWidget):
             self.update()
         elif self._sel_type in ('clamp_max', 'clamp_min'):
             self._clamp_enabled = not self._clamp_enabled
-            self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
+            self.clamp_changed.emit(
+                self._clamp_enabled, self._clamp_min, self._clamp_max)
             self.update()
 
     def _cycle_focus(self, forward=True):
         """TAB / Shift+TAB でフォーカス対象を巡回する"""
-        targets = [('point', lid) for lid in self._layer_ids if lid in self._data]
+        targets = [('point', lid) for lid in self._layer_ids
+                   if lid in self._data]
         targets += [('tri', None), ('clamp_max', None), ('clamp_min', None)]
         if not targets:
             return
@@ -582,7 +682,8 @@ class CanvasWidget(QWidget):
              if t == self._sel_type and (t != 'point' or s == self._sel)),
             None
         )
-        new_idx = ((current if current is not None else -1) + (1 if forward else -1)) % len(targets)
+        new_idx = ((current if current is not None else -1)
+                   + (1 if forward else -1)) % len(targets)
         new_type, new_sel = targets[new_idx]
         self._sel_type = new_type
         if new_type == 'point':
@@ -665,29 +766,35 @@ class CanvasWidget(QWidget):
                 new_val = min(100, self._clamp_max + SNAP)
                 if new_val != self._clamp_max:
                     self._clamp_max = new_val
-                    self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
+                    self.clamp_changed.emit(
+                        self._clamp_enabled, self._clamp_min, self._clamp_max)
                     self.update()
             elif key == Qt.Key.Key_Down:
-                new_val = max(self._clamp_min + CLAMP_GAP, self._clamp_max - SNAP)
+                new_val = max(self._clamp_min + CLAMP_GAP,
+                              self._clamp_max - SNAP)
                 if new_val != self._clamp_max:
                     self._clamp_max = new_val
-                    self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
+                    self.clamp_changed.emit(
+                        self._clamp_enabled, self._clamp_min, self._clamp_max)
                     self.update()
             else:
                 event.ignore()
 
         elif self._sel_type == 'clamp_min':
             if key == Qt.Key.Key_Up:
-                new_val = min(self._clamp_max - CLAMP_GAP, self._clamp_min + SNAP)
+                new_val = min(self._clamp_max - CLAMP_GAP,
+                              self._clamp_min + SNAP)
                 if new_val != self._clamp_min:
                     self._clamp_min = new_val
-                    self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
+                    self.clamp_changed.emit(
+                        self._clamp_enabled, self._clamp_min, self._clamp_max)
                     self.update()
             elif key == Qt.Key.Key_Down:
                 new_val = max(0, self._clamp_min - SNAP)
                 if new_val != self._clamp_min:
                     self._clamp_min = new_val
-                    self.clamp_changed.emit(self._clamp_enabled, self._clamp_min, self._clamp_max)
+                    self.clamp_changed.emit(
+                        self._clamp_enabled, self._clamp_min, self._clamp_max)
                     self.update()
             else:
                 event.ignore()
@@ -699,7 +806,8 @@ class CanvasWidget(QWidget):
         if layer_id not in self._data:
             return
         d = self._data[layer_id]
-        new_slot = max(0, min(self._n_slots * SNAP, d['slot'] + direction * SNAP))
+        new_slot = max(0, min(self._n_slots * SNAP,
+                              d['slot'] + direction * SNAP))
         if new_slot == d['slot']:
             return
 
@@ -710,7 +818,8 @@ class CanvasWidget(QWidget):
 
         new_ids = sorted(
             self._layer_ids,
-            key=lambda lid: (self._data[lid]['slot'], self._data[lid]['opacity'])
+            key=lambda lid: (self._data[lid]['slot'],
+                             self._data[lid]['opacity'])
         )
         self.order_changed.emit(new_ids)
         self.update()

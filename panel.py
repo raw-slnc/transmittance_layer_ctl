@@ -16,7 +16,8 @@ from .canvas_widget import CanvasWidget, SNAP
 from . import group_manager as gm
 
 _PRESET_SECTION = 'transmittance_layer_ctl'
-_N_PRESETS      = 3
+_N_PRESETS = 3
+_OPACITY_FLUSH_MS = 35
 
 
 class PresetButton(QPushButton):
@@ -27,7 +28,7 @@ class PresetButton(QPushButton):
     def __init__(self, index, parent=None):
         super().__init__(f'Preset: {index}', parent)
         self._long_fired = False
-        self._timer      = QTimer(self)
+        self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(self.LONG_PRESS_MS)
         self._timer.timeout.connect(self._on_long_press)
@@ -50,7 +51,8 @@ class PresetButton(QPushButton):
     def enterEvent(self, event):
         from qgis.PyQt.QtWidgets import QToolTip
         if self.toolTip():
-            QToolTip.showText(self.mapToGlobal(self.rect().bottomLeft()), self.toolTip(), self)
+            QToolTip.showText(self.mapToGlobal(self.rect().bottomLeft()),
+                              self.toolTip(), self)
         super().enterEvent(event)
 
 
@@ -66,10 +68,16 @@ class TransmittancePanel(QDialog):
         self.setWindowIcon(
             QIcon(os.path.join(os.path.dirname(__file__), 'icon.png'))
         )
-        self.iface          = iface
-        self.current_group  = None
+        self.iface = iface
+        self.current_group = None
         self._active_preset = None  # 1〜3 or None
-        self._positioned    = False  # 初回表示位置調整フラグ
+        self._positioned = False  # 初回表示位置調整フラグ
+        self._pending_opacities = {}
+        self._opacity_apply_timer = QTimer(self)
+        self._opacity_apply_timer.setSingleShot(True)
+        self._opacity_apply_timer.setInterval(_OPACITY_FLUSH_MS)
+        self._opacity_apply_timer.timeout.connect(
+            self._flush_pending_opacities)
 
         self._build_ui()
 
@@ -130,7 +138,8 @@ class TransmittancePanel(QDialog):
         self.group_label = QLabel('— No group selected —')
         self.group_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.group_label.setStyleSheet(
-            'font-weight: bold; padding: 3px; color: #AAAACC; background: transparent;'
+            'font-weight: bold; padding: 3px; color: #AAAACC; '
+            'background: transparent;'
         )
         header_row.addWidget(self.group_label)
         header_row.addStretch(1)
@@ -159,8 +168,10 @@ class TransmittancePanel(QDialog):
             btn = PresetButton(i)
             btn.setFixedHeight(26)
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            btn.clicked.connect(lambda checked, b=btn, n=i: self._on_preset_click(b, n))
-            btn._timer.timeout.connect(lambda b=btn, n=i: self._on_preset_long_press(b, n))
+            btn.clicked.connect(
+                lambda checked, b=btn, n=i: self._on_preset_click(b, n))
+            btn._timer.timeout.connect(
+                lambda b=btn, n=i: self._on_preset_long_press(b, n))
             btn.customContextMenuRequested.connect(
                 lambda pos, n=i: self._on_preset_right_click(n)
             )
@@ -205,7 +216,8 @@ class TransmittancePanel(QDialog):
 
         # デベロッパー表示
         lbl_credit = QLabel('Developed by Avid Tree Work')
-        lbl_credit.setStyleSheet('color: #AAAACC; font-size: 10px; background: transparent;')
+        lbl_credit.setStyleSheet(
+            'color: #AAAACC; font-size: 10px; background: transparent;')
         lbl_credit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl_credit)
 
@@ -216,7 +228,8 @@ class TransmittancePanel(QDialog):
         self.canvas.visibility_toggled.connect(self._on_visibility)
         self.canvas.layer_selected.connect(self._on_layer_selected)
         self.canvas.clamp_changed.connect(self._on_clamp_changed)
-        self.canvas.indicators_toggled.connect(self._update_label_btn_style)
+        self.canvas.indicators_toggled.connect(self._on_indicators_toggled)
+        self.canvas.interaction_finished.connect(self._flush_opacity_changes)
 
         self._update_preset_btn_style()
         self._update_label_btn_style()
@@ -244,11 +257,12 @@ class TransmittancePanel(QDialog):
         main_win = self.iface.mainWindow()
         main_center = main_win.geometry().center()
         screen = next(
-            (s for s in QApplication.screens() if s.geometry().contains(main_center)),
+            (s for s in QApplication.screens()
+             if s.geometry().contains(main_center)),
             QApplication.primaryScreen()
         )
         scr = screen.availableGeometry()
-        x = scr.right()  - self.width()  - 40
+        x = scr.right() - self.width() - 40
         y = scr.bottom() - self.height() - 40
         self.move(x, y)
 
@@ -275,15 +289,20 @@ class TransmittancePanel(QDialog):
             QTimer.singleShot(0, self._move_to_top_right)
         ids = self.canvas._layer_ids
         if self.canvas._exclusive_mode:
-            # EXctlがオンの場合、選択中または最初のポイントに排他適用
+            # EXctlがオンの場合も、パネルを開くだけでは表示状態を書き戻さない。
             sel = self.canvas._sel
-            target = sel if (sel and sel in self.canvas._data) else (ids[0] if ids else None)
+            target = (sel if (sel and sel in self.canvas._data)
+                      else (ids[0] if ids else None))
             if target:
-                self.canvas._apply_exclusive(target)
+                self.canvas._sel = target
+                self.canvas._sel_type = 'point'
+                self.canvas.layer_selected.emit(target)
         else:
             # 通常モード: 選択がなければ最初のポイントを選択
-            if (not self.canvas._sel or self.canvas._sel not in self.canvas._data) and ids:
-                self.canvas._sel      = ids[0]
+            if ((not self.canvas._sel
+                    or self.canvas._sel not in self.canvas._data)
+                    and ids):
+                self.canvas._sel = ids[0]
                 self.canvas._sel_type = 'point'
                 self.canvas.layer_selected.emit(ids[0])
         self.canvas.setFocus()
@@ -312,39 +331,130 @@ class TransmittancePanel(QDialog):
 
     def _reload(self):
         layers = gm.get_layers_in_order(self.current_group)
-        self.canvas.set_layers(layers)
+        if layers and not gm.has_reset_opacities(self.current_group):
+            gm.save_reset_opacities(self.current_group)
+        current_opacities = {
+            layer.id(): round(layer.opacity() * 100)
+            for layer in layers
+        }
+        self.canvas.set_layers(layers, current_opacities)
+        self._restore_panel_ui_state()
         for layer in layers:
             vis = gm.get_layer_visibility(self.current_group, layer.id())
             if layer.id() in self.canvas._data:
+                self.canvas._data[layer.id()]['opacity'] = (
+                    current_opacities[layer.id()])
                 self.canvas._data[layer.id()]['visible'] = vis
-        self._apply_all_opacities()
+        self._update_panel_ui_styles()
         self.canvas.update()
 
-    def _apply_all_opacities(self):
+    def _panel_ui_state(self):
+        return {
+            'clamp_enabled': self.canvas._clamp_enabled,
+            'clamp_min': self.canvas._clamp_min,
+            'clamp_max': self.canvas._clamp_max,
+            'indicators_visible': self.canvas._indicators_visible,
+            'label_pos': self.canvas._label_pos,
+            'exclusive_mode': self.canvas._exclusive_mode,
+            'exclusive_groups': [
+                [lid for lid in self.canvas._layer_ids if lid in group]
+                for group in self.canvas._exclusive_groups
+            ],
+        }
+
+    def _save_panel_ui_state(self):
+        group = self._valid_group()
+        if group:
+            gm.set_panel_state(group, self._panel_ui_state())
+
+    def _restore_panel_ui_state(self):
+        group = self._valid_group()
+        state = gm.get_panel_state(group) if group else {}
+        active_ids = set(self.canvas._layer_ids)
+
+        def _as_int(value, default):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        self.canvas._clamp_enabled = bool(state.get('clamp_enabled', False))
+        self.canvas._clamp_min = max(
+            0, min(100, _as_int(state.get('clamp_min'), 0)))
+        self.canvas._clamp_max = max(
+            0, min(100, _as_int(state.get('clamp_max'), 100)))
+        if self.canvas._clamp_min > self.canvas._clamp_max - SNAP:
+            self.canvas._clamp_min = max(0, self.canvas._clamp_max - SNAP)
+        self.canvas._indicators_visible = bool(
+            state.get('indicators_visible', True))
+        self.canvas._label_pos = max(
+            0,
+            min(self.canvas._n_slots * SNAP,
+                _as_int(state.get('label_pos'), SNAP)),
+        )
+        self.canvas._exclusive_mode = bool(state.get('exclusive_mode', False))
+        groups = []
+        for group_ids in state.get('exclusive_groups', []):
+            group_set = {lid for lid in group_ids if lid in active_ids}
+            if len(group_set) > 1:
+                groups.append(group_set)
+        self.canvas._exclusive_groups = groups
+        self.canvas._prune_exclusive_groups()
+
+    def _update_panel_ui_styles(self):
+        self._update_label_btn_style()
+        self._update_filter_btn_style()
+        self._update_exclusive_btn_style()
+
+    def _effective_opacity(self, opacity_percent):
+        op = max(0, min(100, int(opacity_percent)))
+        if self.canvas._clamp_enabled:
+            op = max(self.canvas._clamp_min, min(self.canvas._clamp_max, op))
+        return op
+
+    def _queue_opacity(self, layer_id, opacity_percent):
+        self._pending_opacities[layer_id] = self._effective_opacity(
+            opacity_percent)
+        if not self._opacity_apply_timer.isActive():
+            self._opacity_apply_timer.start()
+
+    def _flush_pending_opacities(self):
+        pending = self._pending_opacities
+        self._pending_opacities = {}
+        for lid, op in pending.items():
+            layer = QgsProject.instance().mapLayer(lid)
+            if layer:
+                gm.set_layer_opacity(layer, op)
+
+    def _flush_opacity_changes(self):
+        self._opacity_apply_timer.stop()
+        self._flush_pending_opacities()
+
+    def _apply_all_opacities(self, deferred=False):
         """クランプ状態を反映してすべてのレイヤー透過率を再適用"""
+        if not deferred:
+            self._flush_opacity_changes()
+            self._pending_opacities.clear()
         for lid in self.canvas._layer_ids:
             layer = QgsProject.instance().mapLayer(lid)
             if layer and lid in self.canvas._data:
-                op = self.canvas._data[lid]['opacity']
-                if self.canvas._clamp_enabled:
-                    op = max(self.canvas._clamp_min, min(self.canvas._clamp_max, op))
-                gm.set_layer_opacity(layer, op)
+                op = self._effective_opacity(self.canvas._data[lid]['opacity'])
+                if deferred:
+                    self._queue_opacity(lid, op)
+                else:
+                    gm.set_layer_opacity(layer, op)
 
     # ------------------------------------------------------------------ #
     #  シグナルハンドラ
     # ------------------------------------------------------------------ #
 
     def _on_opacity(self, layer_id, opacity_percent):
-        layer = QgsProject.instance().mapLayer(layer_id)
-        if layer:
-            op = opacity_percent
-            if self.canvas._clamp_enabled:
-                op = max(self.canvas._clamp_min, min(self.canvas._clamp_max, op))
-            gm.set_layer_opacity(layer, op)
+        self._queue_opacity(layer_id, opacity_percent)
 
     def _on_order(self, ordered_ids):
         group = self._valid_group()
         if group:
+            self._flush_opacity_changes()
             gm.apply_rendering_order(group, ordered_ids)
             self.canvas._layer_ids = list(ordered_ids)
             self.canvas.update()
@@ -353,11 +463,14 @@ class TransmittancePanel(QDialog):
         layer = QgsProject.instance().mapLayer(layer_id)
         if layer:
             gm.set_label_enabled(layer, enabled)
+        self._save_panel_ui_state()
 
     def _on_visibility(self, layer_id, visible):
         group = self._valid_group()
         if group:
             gm.set_layer_visibility(group, layer_id, visible)
+        if self.canvas._exclusive_mode:
+            self._save_panel_ui_state()
 
     def _on_layer_selected(self, layer_id):
         layer = QgsProject.instance().mapLayer(layer_id)
@@ -366,7 +479,8 @@ class TransmittancePanel(QDialog):
 
     def _on_clamp_changed(self, enabled, clamp_min, clamp_max):
         if enabled:
-            self._apply_all_opacities()
+            self._apply_all_opacities(deferred=True)
+        self._save_panel_ui_state()
 
     def _on_label_toggle(self):
         was_visible = self.canvas._indicators_visible
@@ -378,6 +492,11 @@ class TransmittancePanel(QDialog):
             self.canvas.label_toggled.emit(lid, show)
         self.canvas.update()
         self._update_label_btn_style()
+        self._save_panel_ui_state()
+
+    def _on_indicators_toggled(self, visible):
+        self._update_label_btn_style()
+        self._save_panel_ui_state()
 
     def _update_label_btn_style(self):
         if self.canvas._indicators_visible:
@@ -395,7 +514,8 @@ class TransmittancePanel(QDialog):
     def _update_group_onoff_btn_style(self):
         group = self._valid_group()
         if group is not None and group.isVisible():
-            self._group_onoff_btn.setStyleSheet('color: #4488FF; font-weight: bold;')
+            self._group_onoff_btn.setStyleSheet(
+                'color: #4488FF; font-weight: bold;')
         else:
             self._group_onoff_btn.setStyleSheet('')
 
@@ -414,31 +534,35 @@ class TransmittancePanel(QDialog):
             self.canvas.setFocus()
         self.canvas.update()
         self._update_exclusive_btn_style()
+        self._save_panel_ui_state()
 
     def _update_exclusive_btn_style(self):
         if self.canvas._exclusive_mode:
-            self._exclusive_btn.setStyleSheet('color: #4488FF; font-weight: bold;')
+            self._exclusive_btn.setStyleSheet(
+                'color: #4488FF; font-weight: bold;')
         else:
             self._exclusive_btn.setStyleSheet('')
 
     def _on_reset(self):
         ids = list(self.canvas._layer_ids)
-        n   = len(ids)
+        n = len(ids)
         if n == 0:
             return
+        group = self._valid_group()
+        reset_opacities = gm.get_reset_opacities(group) if group else {}
         for i, lid in enumerate(ids):
             if lid not in self.canvas._data:
                 continue
-            t     = i / (n - 1) if n > 1 else 0.5
+            t = i / (n - 1) if n > 1 else 0.5
             inner = self.canvas._n_slots * SNAP - 2 * SNAP
-            diag  = SNAP + max(0, min(inner, round(t * inner / SNAP) * SNAP))
-            self.canvas._data[lid]['slot']    = diag
-            self.canvas._data[lid]['opacity'] = 60
+            diag = SNAP + max(0, min(inner, round(t * inner / SNAP) * SNAP))
+            reset_opacity = reset_opacities.get(lid, 60)
+            self.canvas._data[lid]['slot'] = diag
+            self.canvas._data[lid]['opacity'] = reset_opacity
             self.canvas._data[lid]['visible'] = True
             layer = QgsProject.instance().mapLayer(lid)
             if layer:
-                gm.set_layer_opacity(layer, 60)
-            group = self._valid_group()
+                gm.set_layer_opacity(layer, reset_opacity)
             if group:
                 gm.set_layer_visibility(group, lid, True)
         self.canvas.update()
@@ -448,10 +572,12 @@ class TransmittancePanel(QDialog):
         self.canvas.update()
         self._update_filter_btn_style()
         self._apply_all_opacities()
+        self._save_panel_ui_state()
 
     def _update_filter_btn_style(self):
         if self.canvas._clamp_enabled:
-            self._filter_btn.setStyleSheet('color: #4488FF; font-weight: bold;')
+            self._filter_btn.setStyleSheet(
+                'color: #4488FF; font-weight: bold;')
         else:
             self._filter_btn.setStyleSheet('')
 
@@ -460,15 +586,21 @@ class TransmittancePanel(QDialog):
             self,
             'Transmittance Layer ctl — Operation Help',
             '<b>Mouse</b><br>'
-            '&bull; Drag a dot: adjust order (left/right) and opacity (up/down)<br>'
+            '&bull; Drag a dot: adjust order (left/right) '
+            'and opacity (up/down)<br>'
             '&bull; Click a dot: toggle layer visibility<br>'
+            '&bull; Ctrl+click a dot in Exclusive Control: '
+            'add/remove it from a remembered group<br>'
+            '&nbsp;&nbsp;&nbsp;Click any dot in a remembered group '
+            'to show that group again<br>'
             '<br>'
             '<b>Keyboard</b><br>'
             '&bull; Tab / Shift+Tab: move focus between elements<br>'
             '&bull; Space: toggle visibility of the focused element<br>'
             '&bull; ↑ / ↓ (layer selected): adjust opacity<br>'
             '&bull; ← / → (layer selected): reorder layers<br>'
-            '&nbsp;&nbsp;&nbsp;→ in Exclusive Control mode: cycle which layer is shown alone<br>'
+            '&nbsp;&nbsp;&nbsp;→ in Exclusive Control mode: '
+            'cycle which layer is shown alone<br>'
             '&bull; ← / → (label marker selected): move label position<br>'
             '&bull; ↑ / ↓ (clamp marker selected): adjust clamp range<br>'
             '&bull; 1–7: trigger the corresponding button below',
@@ -522,16 +654,16 @@ class TransmittancePanel(QDialog):
         for lid, d in self.canvas._data.items():
             layers[lid] = {
                 'opacity': d['opacity'],
-                'slot'   : d['slot'],
+                'slot': d['slot'],
                 'visible': d['visible'],
             }
         return {
-            'layers'   : layers,
-            'order'    : list(self.canvas._layer_ids),
-            'clamp'    : {
+            'layers': layers,
+            'order': list(self.canvas._layer_ids),
+            'clamp': {
                 'enabled': self.canvas._clamp_enabled,
-                'min'    : self.canvas._clamp_min,
-                'max'    : self.canvas._clamp_max,
+                'min': self.canvas._clamp_min,
+                'max': self.canvas._clamp_max,
             },
         }
 
@@ -543,9 +675,9 @@ class TransmittancePanel(QDialog):
             self._update_exclusive_btn_style()
 
         # レイヤー順序（現グループにある IDのみ）
-        saved_order   = data.get('order', [])
-        current_ids   = set(self.canvas._data.keys())
-        valid_order   = [lid for lid in saved_order if lid in current_ids]
+        saved_order = data.get('order', [])
+        current_ids = set(self.canvas._data.keys())
+        valid_order = [lid for lid in saved_order if lid in current_ids]
         for lid in self.canvas._layer_ids:
             if lid not in valid_order:
                 valid_order.append(lid)
@@ -560,7 +692,7 @@ class TransmittancePanel(QDialog):
             if lid not in self.canvas._data:
                 continue
             self.canvas._data[lid]['opacity'] = ld.get('opacity', 100)
-            self.canvas._data[lid]['slot']    = ld.get('slot', 0)
+            self.canvas._data[lid]['slot'] = ld.get('slot', 0)
             self.canvas._data[lid]['visible'] = ld.get('visible', True)
             group = self._valid_group()
             if group:
@@ -571,8 +703,8 @@ class TransmittancePanel(QDialog):
         # クランプ
         clamp = data.get('clamp', {})
         self.canvas._clamp_enabled = clamp.get('enabled', False)
-        self.canvas._clamp_min     = clamp.get('min', 0)
-        self.canvas._clamp_max     = clamp.get('max', 100)
+        self.canvas._clamp_min = clamp.get('min', 0)
+        self.canvas._clamp_max = clamp.get('max', 100)
         self._update_filter_btn_style()
 
         self._apply_all_opacities()
@@ -580,7 +712,7 @@ class TransmittancePanel(QDialog):
 
     def _update_preset_btn_style(self):
         for i, btn in enumerate(self._preset_btns, 1):
-            has_data  = self._load_preset_data(i) is not None
+            has_data = self._load_preset_data(i) is not None
             is_active = self._active_preset == i
             if is_active:
                 btn.setStyleSheet('color: #4488FF; font-weight: bold;')
@@ -589,7 +721,8 @@ class TransmittancePanel(QDialog):
             else:
                 btn.setStyleSheet('color: #AAAACC;')
             if has_data:
-                tip = 'Click: apply  |  Long-press: overwrite  |  Right-click: delete'
+                tip = ('Click: apply  |  Long-press: overwrite  |  '
+                       'Right-click: delete')
             else:
                 tip = 'Empty — long-press to save current state'
             btn.setToolTip(tip)
